@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SWARM — Emergent Combat Prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0c08;
+      --bg2: #0f1209;
+      --panel: #111408;
+      --border: #2a3018;
+      --border2: #1a2010;
+      --ink: #c8d4a0;
+      --muted: #6a7850;
+      --faint: #3a4228;
+      --accent: #7cbb3c;
+      --accent2: #e8a020;
+      --danger: #e04030;
+      --purple: #8060e0;
+      --teal: #30c8c0;
+      --orange: #e06020;
+      --font-display: 'Bebas Neue', 'Impact', sans-serif;
+      --font-mono: 'Space Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--font-mono); }
+    body { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 100vh; }
+
+    /* SIDEBAR */
+    .sidebar {
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow-y: auto; overflow-x: hidden;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+      padding: 12px 10px;
+      gap: 14px;
+    }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); }
+
+    .game-title {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      letter-spacing: .08em;
+      color: var(--accent);
+      line-height: 1;
+      text-shadow: 0 0 20px rgba(124,187,60,.4);
+    }
+    .game-subtitle {
+      font-size: .55rem;
+      color: var(--muted);
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .section-head {
+      font-size: .55rem;
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      color: var(--faint);
+      border-bottom: 1px solid var(--border2);
+      padding-bottom: 4px;
+      margin-bottom: 4px;
+    }
+
+    /* Health bar */
+    .health-wrap { display: flex; flex-direction: column; gap: 4px; }
+    .bar-row { display: flex; align-items: center; gap: 6px; font-size: .6rem; color: var(--muted); }
+    .bar-track { flex: 1; height: 8px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 2px; transition: width .15s; }
+    .bar-fill.hp { background: linear-gradient(90deg, #e04030, #e07030, #7cbb3c); }
+    .bar-fill.swarm { background: linear-gradient(90deg, #3c6010, #7cbb3c); }
+    .bar-fill.ep { background: linear-gradient(90deg, #304080, #6080e0); }
+
+    /* Pheromone tool palette */
+    .pher-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .pher-btn {
+      padding: 6px 5px; border-radius: 4px; border: 1px solid var(--border);
+      background: rgba(255,255,255,.03); cursor: pointer;
+      font-family: var(--font-mono); font-size: .55rem; color: var(--ink);
+      text-align: left; transition: .13s; line-height: 1.3;
+    }
+    .pher-btn:hover { border-color: var(--accent); }
+    .pher-btn.active { border-color: var(--accent); background: rgba(124,187,60,.12); color: var(--accent); }
+    .pher-btn .p-key { font-size: .5rem; opacity: .5; }
+    .pher-btn .p-name { font-weight: 700; font-size: .65rem; }
+    .pher-btn .p-sub { font-size: .5rem; opacity: .6; }
+
+    /* Stats */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    .stat-box { padding: 5px 6px; border: 1px solid var(--border2); border-radius: 3px; background: rgba(0,0,0,.2); }
+    .stat-box .s-label { font-size: .48rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+    .stat-box .s-val { font-size: .85rem; font-weight: 700; color: var(--ink); line-height: 1.2; }
+
+    /* Wave indicator */
+    .wave-row { display: flex; align-items: center; gap: 8px; font-size: .7rem; }
+    .wave-num { font-family: var(--font-display); font-size: 1.8rem; color: var(--accent2); line-height: 1; }
+
+    /* Controls legend */
+    .ctrl-legend { font-size: .5rem; color: var(--muted); line-height: 1.9; }
+    .ctrl-legend span { color: var(--ink); }
+
+    /* Brush size */
+    .slider-row { display: flex; align-items: center; gap: 6px; font-size: .55rem; color: var(--muted); }
+    .slider-row input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; height: 14px; }
+
+    /* MAIN */
+    .main { display: flex; flex-direction: column; overflow: hidden; position: relative; }
+    .hud {
+      padding: 6px 12px;
+      background: rgba(0,0,0,.5);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+      flex-shrink: 0; font-size: .6rem;
+    }
+    .hud-title { font-family: var(--font-display); font-size: 1.1rem; color: var(--accent); letter-spacing: .1em; }
+    .pill {
+      padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border);
+      font-size: .55rem; font-family: var(--font-mono);
+    }
+    .pill.warn { border-color: var(--danger); color: var(--danger); }
+    .pill.ok   { border-color: var(--accent); color: var(--accent); }
+
+    .canvas-area { flex: 1; position: relative; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+    /* Overlay messages */
+    .overlay-msg {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      background: rgba(10,12,8,.92); border: 1px solid var(--accent);
+      border-radius: 6px; padding: 20px 32px; text-align: center;
+      pointer-events: none; opacity: 0; transition: opacity .3s;
+      min-width: 300px;
+    }
+    .overlay-msg.show { opacity: 1; pointer-events: all; }
+    .overlay-msg h2 { font-family: var(--font-display); font-size: 2rem; color: var(--accent); letter-spacing: .1em; margin-bottom: 8px; }
+    .overlay-msg p { font-size: .6rem; color: var(--muted); margin-bottom: 12px; line-height: 1.7; }
+    .overlay-msg .btn { padding: 7px 18px; border-radius: 4px; border: 1px solid var(--accent); background: rgba(124,187,60,.12); color: var(--accent); cursor: pointer; font-family: var(--font-mono); font-size: .6rem; margin: 3px; transition: .13s; }
+    .overlay-msg .btn:hover { background: rgba(124,187,60,.25); }
+
+    /* Floating damage numbers */
+    .float-txt {
+      position: absolute; font-family: var(--font-mono); font-size: .65rem; font-weight: 700;
+      pointer-events: none; animation: floatUp 1.2s ease-out forwards;
+    }
+    @keyframes floatUp { 0%{opacity:1;transform:translateY(0)} 100%{opacity:0;transform:translateY(-28px)} }
+
+    /* Flash overlay */
+    .flash-overlay {
+      position: absolute; inset: 0; pointer-events: none;
+      opacity: 0; transition: opacity .08s;
+    }
+    .flash-overlay.active { opacity: 1; }
+
+    /* Bottom bar */
+    .footer {
+      padding: 4px 12px; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0; font-size: .5rem; color: var(--muted);
+      background: rgba(0,0,0,.3);
+    }
+
+    @media (max-width: 760px) {
+      body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 40vh; }
+    }
+  </style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div>
+    <div class="game-title">SWARM</div>
+    <div class="game-subtitle">Emergent Combat · Indirect Control</div>
+  </div>
+
+  <div>
+    <div class="section-head">Vitals</div>
+    <div class="health-wrap">
+      <div class="bar-row"><span style="min-width:42px">HP</span><div class="bar-track"><div class="bar-fill hp" id="hpBar" style="width:100%"></div></div><span id="hpVal">100</span></div>
+      <div class="bar-row"><span style="min-width:42px">SWARM</span><div class="bar-track"><div class="bar-fill swarm" id="swarmBar" style="width:100%"></div></div><span id="swarmVal">80</span></div>
+      <div class="bar-row"><span style="min-width:42px">ENERGY</span><div class="bar-track"><div class="bar-fill ep" id="epBar" style="width:100%"></div></div><span id="epVal">100</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head">Pheromone Tools <span style="color:var(--faint);font-size:.45rem">[1-6 keys]</span></div>
+    <div class="pher-grid" id="pherGrid"></div>
+    <div class="slider-row" style="margin-top:6px">
+      <span>Size</span>
+      <input type="range" id="brushSlider" min="1" max="8" value="2">
+      <span id="brushVal" style="color:var(--accent);min-width:1.2ch">2</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head">Wave</div>
+    <div class="wave-row">
+      <div class="wave-num" id="waveNum">1</div>
+      <div style="font-size:.55rem;color:var(--muted);line-height:1.5">
+        <div id="waveLabel">SCOUTING WAVE</div>
+        <div id="waveProgress" style="color:var(--ink)">Enemies: <span id="enemyCount">0</span></div>
+      </div>
+    </div>
+    <div style="font-size:.5rem;color:var(--muted);margin-top:4px" id="waveHint">Shape the field — ants do the killing.</div>
+  </div>
+
+  <div>
+    <div class="section-head">Battlefield</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="s-label">Kills</div><div class="s-val" id="killCount">0</div></div>
+      <div class="stat-box"><div class="s-label">Deaths</div><div class="s-val" id="deathCount">0</div></div>
+      <div class="stat-box"><div class="s-label">Density</div><div class="s-val" id="densityStat">0</div></div>
+      <div class="stat-box"><div class="s-label">Panic</div><div class="s-val" id="panicStat">0%</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head">Controls</div>
+    <div class="ctrl-legend">
+      <span>WASD</span> — move player<br>
+      <span>Mouse</span> — paint pheromone<br>
+      <span>Right-click</span> — erase trails<br>
+      <span>1-6</span> — switch pheromone type<br>
+      <span>Space</span> — pause<br>
+      <span>R</span> — restart wave<br>
+      <span>T</span> — toggle trail view
+    </div>
+  </div>
+
+  <div>
+    <div class="section-head">Legend</div>
+    <div class="ctrl-legend">
+      <span style="color:#7cbb3c">●</span> Attack pher — draws swarm to area<br>
+      <span style="color:#e8a020">●</span> Frenzy pher — boosts aggression<br>
+      <span style="color:#e04030">●</span> Retreat pher — pulls ants back<br>
+      <span style="color:#8060e0">●</span> Split pher — divides swarm<br>
+      <span style="color:#30c8c0">●</span> Fear pher — scatters enemies<br>
+      <span style="color:#604820">●</span> Trail — foot/home signal<br>
+      <span style="color:#f0ead4">●</span> Scout ant<br>
+      <span style="color:#f6c04a">●</span> Combat ant (agitated)<br>
+      <span style="color:#e04030">■</span> Enemy (various)<br>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="hud">
+    <div class="hud-title" id="hudTitle">SWARM</div>
+    <div class="pill" id="hudWave">WAVE 1</div>
+    <div class="pill" id="hudPhase">PREPARE</div>
+    <div style="flex:1"></div>
+    <div class="pill" id="hudTimer">—</div>
+    <div class="pill" id="hudScore">SCORE: 0</div>
+  </div>
+  <div class="canvas-area" id="canvasArea">
+    <canvas id="game"></canvas>
+    <div class="flash-overlay" id="flashOverlay"></div>
+    <div class="overlay-msg" id="overlayMsg">
+      <h2 id="overlayTitle">SWARM</h2>
+      <p id="overlayBody">You are the pheromone architect. Direct your living swarm against waves of enemies.<br><br>You cannot order individual ants. You can only shape the chemical battlefield — and watch what emerges.</p>
+      <button class="btn" id="overlayBtn">DEPLOY</button>
+    </div>
+  </div>
+  <div class="footer">
+    <span id="footerLeft">Indirect control · Emergent behavior</span>
+    <span id="footerRight">T = toggle trail overlay</span>
+  </div>
+</main>
+
+<script>
+(() => {
+'use strict';
+
+// ════════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ════════════════════════════════════════════════════════════
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const area = document.getElementById('canvasArea');
+
+function resizeCanvas() {
+  canvas.width  = area.clientWidth;
+  canvas.height = area.clientHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', () => { resizeCanvas(); recalcDims(); initArena(); });
+
+const CELL = 8;
+let cols, rows, size;
+function recalcDims() {
+  cols = Math.floor(canvas.width  / CELL);
+  rows = Math.floor(canvas.height / CELL);
+  size = cols * rows;
+}
+recalcDims();
+
+const idx  = (x, y) => y * cols + x;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rand  = (a, b) => a + Math.random() * (b - a);
+const dist2 = (x1,y1,x2,y2) => (x1-x2)**2 + (y1-y2)**2;
+const dist  = (x1,y1,x2,y2) => Math.sqrt(dist2(x1,y1,x2,y2));
+
+// ════════════════════════════════════════════════════════════
+// PHEROMONE FIELD ARRAYS
+// ════════════════════════════════════════════════════════════
+let pAttack, pFrenzy, pRetreat, pSplit, pFear, pHome, pFoot;
+let solid, permanent;
+
+function allocFields() {
+  pAttack  = new Float32Array(size);
+  pFrenzy  = new Float32Array(size);
+  pRetreat = new Float32Array(size);
+  pSplit   = new Float32Array(size);
+  pFear    = new Float32Array(size);
+  pHome    = new Float32Array(size);
+  pFoot    = new Float32Array(size);
+  solid    = new Uint8Array(size);
+  permanent= new Uint8Array(size);
+}
+allocFields();
+
+// ════════════════════════════════════════════════════════════
+// PHYSICS PARAMS (preserved from original)
+// ════════════════════════════════════════════════════════════
+const P = {
+  // Pheromone decay per tick
+  decayAttack:  0.9972,
+  decayFrenzy:  0.9960,
+  decayRetreat: 0.9955,
+  decaySplit:   0.9965,
+  decayFear:    0.9950,
+  decayHome:    0.9985,
+  decayFoot:    0.9978,
+  // Diffusion coefficient
+  diffAttack:   0.18,
+  diffFrenzy:   0.14,
+  diffRetreat:  0.22,
+  diffSplit:    0.10,
+  diffFear:     0.30,
+  diffHome:     0.12,
+  diffFoot:     0.04,
+  // Ant behavior
+  antSpeed:     0.065,  // steps/sec target
+  explore:      0.08,
+  noise:        0.06,
+  satCap:       1.2,
+  satPen:       0.7,
+  // Combat
+  antHp:        3,
+  antDmgToEnemy:0.4,
+  antAttackRange: 1.4,
+  // Player
+  playerSpeed:  5.5,   // cells/sec
+  playerMaxHp:  100,
+  playerDmgCooldown: 0.8,
+};
+
+// ════════════════════════════════════════════════════════════
+// DIRECTIONS (8-way, same as original)
+// ════════════════════════════════════════════════════════════
+const DIRS8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+function wrappedDelta(a,b){ const n=DIRS8.length; let d=(b-a+n)%n; if(d>n/2)d-=n; return d; }
+
+function blocked(x,y) { return x<0||x>=cols||y<0||y>=rows||solid[idx(x,y)]===1; }
+function get(arr,x,y) { x=clamp(Math.floor(x),0,cols-1); y=clamp(Math.floor(y),0,rows-1); return arr[idx(x,y)]||0; }
+
+// ════════════════════════════════════════════════════════════
+// SATURATION PENALTY (preserved from original)
+// ════════════════════════════════════════════════════════════
+function satPenalty(v) {
+  const opt = P.satCap * 0.5;
+  if(v < opt) return 1.0;
+  const excess = (v - opt) / (P.satCap - opt + 1e-6);
+  return Math.max(P.satPen, 1.0 - excess*(1.0 - P.satPen));
+}
+
+// ════════════════════════════════════════════════════════════
+// PHEROMONE STAMP (preserved from original)
+// ════════════════════════════════════════════════════════════
+function stamp(arr, x, y, r, v) {
+  x=Math.round(x); y=Math.round(y);
+  for(let yy=y-r; yy<=y+r; yy++)
+    for(let xx=x-r; xx<=x+r; xx++) {
+      if(xx<0||xx>=cols||yy<0||yy>=rows) continue;
+      const d = Math.abs(xx-x)+Math.abs(yy-y);
+      if(d<=r) {
+        const i=idx(xx,yy);
+        if(!solid[i]) arr[i] = clamp(arr[i] + v*(1-d/(r+1)), 0, P.satCap*1.6);
+      }
+    }
+}
+
+// ════════════════════════════════════════════════════════════
+// DIFFUSE (preserved from original, extended)
+// ════════════════════════════════════════════════════════════
+function diffuse(arr, decay, diff) {
+  const copy = new Float32Array(arr);
+  for(let y=1; y<rows-1; y++) {
+    for(let x=1; x<cols-1; x++) {
+      const i=idx(x,y);
+      if(solid[i]){ arr[i]=0; continue; }
+      const avg = (copy[i]*4 + copy[idx(x+1,y)] + copy[idx(x-1,y)] + copy[idx(x,y+1)] + copy[idx(x,y-1)])/8;
+      arr[i] = (copy[i]*(1-diff) + avg*diff) * decay;
+    }
+  }
+}
+
+// Foot trail — very low diffusion, line-like (from original)
+function diffuseFoot() {
+  const d = P.decayFoot;
+  const diff = P.diffFoot;
+  const copy = new Float32Array(pFoot);
+  for(let y=1; y<rows-1; y++) {
+    for(let x=1; x<cols-1; x++) {
+      const i=idx(x,y);
+      if(solid[i]){ pFoot[i]=0; continue; }
+      const nb = copy[idx(x+1,y)]+copy[idx(x-1,y)]+copy[idx(x,y+1)]+copy[idx(x,y-1)];
+      pFoot[i] = (copy[i]*(1-diff) + diff*0.25*nb)*d;
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// GAME STATE
+// ════════════════════════════════════════════════════════════
+const game = {
+  paused: false,
+  started: false,
+  wave: 1,
+  phase: 'prepare',  // prepare | combat | intermission | gameover | victory
+  timer: 0,
+  prepTimer: 4.0,
+  score: 0,
+  kills: 0,
+  deaths: 0,
+  showTrail: false,
+  stepAccum: 0,
+  tool: 'attack',
+  brush: 2,
+  mouse: {x:0, y:0, down:false, right:false},
+  floatTexts: [],
+  screenFlash: {r:0,g:0,b:0,a:0,timer:0},
+};
+
+// ════════════════════════════════════════════════════════════
+// PLAYER
+// ════════════════════════════════════════════════════════════
+let player = {};
+function initPlayer() {
+  player = {
+    x: cols*0.5, y: rows*0.5,
+    vx: 0, vy: 0,
+    hp: P.playerMaxHp,
+    maxHp: P.playerMaxHp,
+    dmgCooldown: 0,
+    invincible: 0,
+    alive: true,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// ANTS
+// ════════════════════════════════════════════════════════════
+let ants = [];
+
+const NEST = { x: null, y: null, r: 3 };
+
+function spawnAnt() {
+  return {
+    x: NEST.x + rand(-2,2),
+    y: NEST.y + rand(-2,2),
+    dir: Math.floor(rand(0,8)),
+    hp: P.antHp,
+    alive: true,
+    carry: 0,
+    combat: 0,      // combat aggression 0-1
+    panic: 0,       // panic level 0-1
+    frenzy: 0,      // frenzy boost
+    stepsNoSig: 0,
+    straightness: 1.0,
+    confidence: 0,
+    prevHome: 0,
+    prevFoot: 0,
+    attackCd: 0,    // attack cooldown
+    everDelivered: false,
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// ENEMIES
+// ════════════════════════════════════════════════════════════
+let enemies = [];
+
+const ENEMY_TYPES = {
+  grunt: {
+    hp: 12, speed: 0.8, size: 1.2, dmg: 8,
+    color: '#c84030', color2: '#e05040',
+    attackRange: 2.0, attackCd: 1.2,
+    pher_emit: null,
+    reward: 10,
+    desc: 'Basic enemy. Chases player directly.',
+  },
+  tank: {
+    hp: 50, speed: 0.4, size: 2.0, dmg: 15,
+    color: '#a03020', color2: '#c04030',
+    attackRange: 2.5, attackCd: 1.8,
+    pher_emit: null,
+    reward: 30,
+    desc: 'Slow but durable. Bulldozes through swarm density.',
+    bulldoze: true,
+  },
+  flamer: {
+    hp: 20, speed: 0.7, size: 1.3, dmg: 5,
+    color: '#e07020', color2: '#f09030',
+    attackRange: 4.0, attackCd: 0.6,
+    pher_emit: 'fear',   // emits fear on death / in panic
+    reward: 20,
+    desc: 'Emits flame bursts. Panics swarm in radius.',
+    flameRange: 5,
+  },
+  ranged: {
+    hp: 15, speed: 0.6, size: 1.1, dmg: 12,
+    color: '#6030a0', color2: '#8040c0',
+    attackRange: 8.0, attackCd: 2.0,
+    pher_emit: null,
+    reward: 25,
+    desc: 'Attacks from distance. Stays away from swarm.',
+    keepDist: 10,
+  },
+  toxic: {
+    hp: 18, speed: 0.65, size: 1.4, dmg: 6,
+    color: '#30a040', color2: '#50c060',
+    attackRange: 2.0, attackCd: 1.0,
+    pher_emit: 'corrupt', // corrupts pheromone fields nearby
+    reward: 22,
+    desc: 'Corrupts pheromone fields. Destroys trail gradients.',
+  },
+  panicker: {
+    hp: 10, speed: 1.1, size: 0.9, dmg: 4,
+    color: '#a08020', color2: '#c0a030',
+    attackRange: 1.5, attackCd: 0.8,
+    pher_emit: 'fear',  // constantly emits fear pher
+    reward: 15,
+    desc: 'Emits fear pheromone. Cascades panic through swarm.',
+  },
+};
+
+function spawnEnemy(type, x, y) {
+  const T = ENEMY_TYPES[type];
+  return {
+    type, x, y,
+    hp: T.hp, maxHp: T.hp,
+    alive: true,
+    vx: 0, vy: 0,
+    attackCd: rand(0, T.attackCd),
+    dmgCooldown: 0,
+    stagger: 0,
+    aggro: false,
+    wanderAngle: rand(0, Math.PI*2),
+    wanderTimer: rand(1,3),
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// WAVE DEFINITIONS
+// ════════════════════════════════════════════════════════════
+const WAVES = [
+  {
+    name: 'FIRST CONTACT',
+    hint: 'Paint Attack pheromone between nest and enemies. The swarm will flow toward it.',
+    enemies: [ {type:'grunt',count:4,ring:true}, ],
+    antCount: 40,
+    reward: 50,
+  },
+  {
+    name: 'FLANK & FLOOD',
+    hint: 'Use Split pheromone to divide your swarm. Frenzy amplifies attack speed.',
+    enemies: [ {type:'grunt',count:6,ring:true}, {type:'ranged',count:2,corners:true} ],
+    antCount: 50,
+    reward: 80,
+  },
+  {
+    name: 'PANIC CASCADE',
+    hint: 'Panickers emit fear pheromone. Use Retreat to pull ants back from fear zones.',
+    enemies: [ {type:'panicker',count:4,ring:true}, {type:'grunt',count:5,ring:true} ],
+    antCount: 55,
+    reward: 100,
+  },
+  {
+    name: 'TOXIC BREACH',
+    hint: 'Toxic enemies destroy your trails. Paint fresh Attack pher constantly to maintain pressure.',
+    enemies: [ {type:'toxic',count:3,ring:true}, {type:'grunt',count:5,ring:true}, {type:'ranged',count:2,corners:true} ],
+    antCount: 60,
+    reward: 130,
+  },
+  {
+    name: 'ARMORED PUSH',
+    hint: 'Tanks bulldoze paths through swarm density. Channel them into corridors using walls of fear.',
+    enemies: [ {type:'tank',count:2,ring:true}, {type:'grunt',count:6,ring:true}, {type:'flamer',count:3,ring:true} ],
+    antCount: 65,
+    reward: 160,
+  },
+  {
+    name: 'FIRESTORM',
+    hint: 'Flamers panic your swarm. Create attack corridors far from panic zones.',
+    enemies: [ {type:'flamer',count:5,ring:true}, {type:'tank',count:2,ring:true}, {type:'ranged',count:3,corners:true} ],
+    antCount: 70,
+    reward: 200,
+  },
+  {
+    name: 'FULL ASSAULT',
+    hint: 'Every enemy type. Use all pheromones. Survive.',
+    enemies: [
+      {type:'grunt',count:8,ring:true}, {type:'tank',count:3,ring:true},
+      {type:'flamer',count:4,ring:true}, {type:'toxic',count:3,ring:true},
+      {type:'ranged',count:3,corners:true}, {type:'panicker',count:4,ring:true},
+    ],
+    antCount: 80,
+    reward: 350,
+  },
+];
+
+// ════════════════════════════════════════════════════════════
+// ARENA SETUP
+// ════════════════════════════════════════════════════════════
+const walls = [];
+
+function clearFields() {
+  pAttack.fill(0); pFrenzy.fill(0); pRetreat.fill(0);
+  pSplit.fill(0); pFear.fill(0); pHome.fill(0); pFoot.fill(0);
+  solid.fill(0); permanent.fill(0);
+}
+
+function addWall(x,y,w,h,perm=false) {
+  for(let yy=y; yy<y+h; yy++)
+    for(let xx=x; xx<x+w; xx++)
+      if(xx>=0&&xx<cols&&yy>=0&&yy<rows){
+        solid[idx(xx,yy)]=1;
+        if(perm) permanent[idx(xx,yy)]=1;
+      }
+}
+
+function initArena() {
+  clearFields();
+  walls.length = 0;
+
+  // Nest position — left-center
+  NEST.x = Math.floor(cols * 0.14);
+  NEST.y = Math.floor(rows * 0.5);
+
+  // Arena walls — create interesting geometry
+  const cx = Math.floor(cols*0.5), cy = Math.floor(rows*0.5);
+
+  // Border walls (thin)
+  addWall(0,0,cols,2,true);
+  addWall(0,rows-2,cols,2,true);
+  addWall(0,0,2,rows,true);
+  addWall(cols-2,0,2,rows,true);
+
+  // Central pillar cluster
+  const pw = 4, ph = 5;
+  addWall(cx-pw, cy-10, pw, ph, true);
+  addWall(cx+2, cy-10, pw, ph, true);
+  addWall(cx-pw, cy+5, pw, ph, true);
+  addWall(cx+2, cy+5, pw, ph, true);
+
+  // Choke point corridors — horizontal walls with gaps
+  const t1y = Math.floor(rows*0.28);
+  const t2y = Math.floor(rows*0.72);
+  // Top corridor wall
+  addWall(Math.floor(cols*0.28), t1y, Math.floor(cols*0.22), 3, true);
+  // Bottom corridor wall
+  addWall(Math.floor(cols*0.28), t2y, Math.floor(cols*0.22), 3, true);
+
+  // Right-side chamber
+  const chx = Math.floor(cols*0.72), chy = cy;
+  addWall(chx, chy-8, 3, 16, true);
+  // gap in middle of that wall
+  for(let yy=chy-2; yy<=chy+2; yy++) solid[idx(chx,yy)]=0;
+  for(let yy=chy-2; yy<=chy+2; yy++) solid[idx(chx+1,yy)]=0;
+
+  // Left-side partial wall (protects nest approach)
+  addWall(Math.floor(cols*0.22), cy-12, 3, 8, true);
+  addWall(Math.floor(cols*0.22), cy+4, 3, 8, true);
+
+  // Stamp initial home pheromone around nest
+  for(let r=0; r<=5; r++) stamp(pHome, NEST.x, NEST.y, r, 0.6-r*0.1);
+}
+
+// ════════════════════════════════════════════════════════════
+// SPAWN WAVE
+// ════════════════════════════════════════════════════════════
+function spawnWave(waveIdx) {
+  const W = WAVES[waveIdx % WAVES.length];
+  enemies.length = 0;
+  ants.length = 0;
+
+  // Spawn ants at nest
+  for(let i=0; i<W.antCount; i++) ants.push(spawnAnt());
+
+  // Spawn enemies
+  const margin = 8;
+  for(const group of W.enemies) {
+    for(let i=0; i<group.count; i++) {
+      let ex, ey;
+      if(group.ring) {
+        // Ring around right half of map
+        const angle = rand(0, Math.PI*2);
+        const rx = Math.floor(cols*0.6), ry = Math.floor(rows*0.5);
+        const radius = rand(Math.floor(Math.min(cols,rows)*0.25), Math.floor(Math.min(cols,rows)*0.40));
+        ex = clamp(Math.round(rx + Math.cos(angle)*radius), margin, cols-margin);
+        ey = clamp(Math.round(ry + Math.sin(angle)*radius), margin, rows-margin);
+      } else if(group.corners) {
+        const corners = [
+          [cols-margin, margin], [cols-margin, rows-margin],
+          [Math.floor(cols*0.7), margin], [Math.floor(cols*0.7), rows-margin],
+        ];
+        const c = corners[i % corners.length];
+        ex = c[0]; ey = c[1];
+      } else {
+        ex = rand(cols*0.5, cols-margin);
+        ey = rand(margin, rows-margin);
+      }
+      // Make sure not in wall
+      let tries = 0;
+      while(blocked(ex,ey) && tries<20) {
+        ex = clamp(ex+rand(-3,3), margin, cols-margin);
+        ey = clamp(ey+rand(-3,3), margin, rows-margin);
+        tries++;
+      }
+      enemies.push(spawnEnemy(group.type, ex, ey));
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// ANT UPDATE — extended from original physics
+// ════════════════════════════════════════════════════════════
+function updateAnt(ant, dt) {
+  if(!ant.alive) return;
+
+  // Cool attack
+  if(ant.attackCd > 0) ant.attackCd -= dt;
+
+  // Update panic / frenzy
+  const localFear   = get(pFear,   ant.x, ant.y);
+  const localFrenzy = get(pFrenzy, ant.x, ant.y);
+  const localAttack = get(pAttack, ant.x, ant.y);
+  const localRetreat= get(pRetreat,ant.x, ant.y);
+
+  ant.panic   = clamp(ant.panic   * 0.94 + localFear   * 0.3, 0, 1);
+  ant.frenzy  = clamp(ant.frenzy  * 0.92 + localFrenzy * 0.4, 0, 1);
+  ant.combat  = clamp(ant.combat  * 0.90 + localAttack * 0.35 + (ant.frenzy*0.2), 0, 1);
+
+  // Panicking ants scatter randomly
+  if(ant.panic > 0.6) {
+    ant.dir = (ant.dir + Math.floor(rand(-3,4)) + DIRS8.length) % DIRS8.length;
+    const [dx,dy] = DIRS8[ant.dir];
+    const nx=ant.x+dx, ny=ant.y+dy;
+    if(!blocked(nx,ny)){ ant.x=nx; ant.y=ny; }
+    depositFoot(ant);
+    return;
+  }
+
+  const candidates = [];
+  for(let offset=-2; offset<=2; offset++) {
+    const d = (ant.dir + offset + DIRS8.length) % DIRS8.length;
+    const [dx,dy] = DIRS8[d];
+    const nx=ant.x+dx, ny=ant.y+dy;
+    if(blocked(nx,ny)) continue;
+
+    const home  = get(pHome,   nx, ny);
+    const atk   = get(pAttack, nx, ny);
+    const fren  = get(pFrenzy, nx, ny);
+    const ret   = get(pRetreat,nx, ny);
+    const spl   = get(pSplit,  nx, ny);
+    const fear  = get(pFear,   nx, ny);
+    const foot  = get(pFoot,   nx, ny);
+
+    const homeS  = satPenalty(home);
+    const atkS   = satPenalty(atk);
+
+    // Base score — directional bias
+    let score = 0.3 - Math.abs(offset)*0.08;
+
+    // COMBAT MODE: follow attack pheromone aggressively
+    if(ant.combat > 0.3) {
+      score += atk * atkS * (3.0 + ant.frenzy*2.0);
+      // Orient toward nearest enemy if in high combat
+      if(ant.combat > 0.6) {
+        const ne = nearestEnemy(nx, ny, 12);
+        if(ne) {
+          const aX = ne.x-nx, aY = ne.y-ny;
+          const targetDir = Math.round(Math.atan2(aY,aX) / (Math.PI*0.25));
+          const doff = wrappedDelta(d, ((targetDir%8)+8)%8);
+          score += (2-Math.abs(doff))*0.4;
+        }
+      }
+    } else {
+      // Normal foraging mode — follow attack trail, home trail
+      score += atk * atkS * 1.8;
+      score += home * homeS * 1.2;
+      score += foot * 0.9;
+    }
+
+    // Retreat pheromone pulls back toward nest
+    if(ret > 0.1) {
+      const toNestX = NEST.x - nx, toNestY = NEST.y - ny;
+      const nestDir = Math.round(Math.atan2(toNestY, toNestX) / (Math.PI*0.25));
+      const dOff = wrappedDelta(d, ((nestDir%8)+8)%8);
+      score += ret * (2 - Math.abs(dOff)) * 1.5;
+      score -= ret * 0.8; // generally retreat
+    }
+
+    // Split pheromone: ants on left of split go one way, right another
+    if(spl > 0.1) {
+      // Use ant index parity as a stable split criterion
+      const antId = ants.indexOf(ant);
+      const goRight = (antId % 2 === 0);
+      score += spl * (goRight ? (dx>0?1.5:-0.5) : (dx<0?1.5:-0.5));
+    }
+
+    // Fear pheromone repels ants
+    score -= fear * 2.0;
+
+    // Explore when no signal
+    if(atk<0.03 && home<0.03 && foot<0.03) score += P.explore;
+
+    score += rand(-P.noise, P.noise);
+    candidates.push({d, nx, ny, score});
+  }
+
+  if(!candidates.length) { ant.dir=(ant.dir+4)%DIRS8.length; return; }
+  candidates.sort((a,b)=>b.score-a.score);
+  let chosen = candidates[0];
+  // 2nd choice variability
+  if(candidates[1] && Math.random() < (ant.combat > 0.5 ? 0.06 : 0.18)) chosen=candidates[1];
+
+  const turn = wrappedDelta(ant.dir, chosen.d);
+  if(Math.abs(turn)>1 && Math.random()<0.45) {
+    ant.dir=(ant.dir+Math.sign(turn)+DIRS8.length)%DIRS8.length;
+    const [dx,dy]=DIRS8[ant.dir];
+    if(!blocked(ant.x+dx,ant.y+dy)){ant.x+=dx;ant.y+=dy;}
+  } else {
+    ant.dir=chosen.d; ant.x=chosen.nx; ant.y=chosen.ny;
+  }
+
+  ant.straightness = 0.8*ant.straightness + 0.2*(Math.abs(turn)<=1?1:0.3);
+  ant.confidence   = 0.9*ant.confidence   + 0.1*Math.min(1,ant.straightness);
+
+  depositFoot(ant);
+  depositHome(ant);
+
+  // ATTACK ENEMIES in range
+  if(ant.combat > 0.2 && ant.attackCd <= 0) {
+    for(const e of enemies) {
+      if(!e.alive) continue;
+      if(dist(ant.x,ant.y,e.x,e.y) <= P.antAttackRange) {
+        const dmg = P.antDmgToEnemy * (1 + ant.frenzy*1.5);
+        e.hp -= dmg;
+        ant.attackCd = 0.4 / (1 + ant.frenzy);
+        if(e.hp <= 0) killEnemy(e);
+        break;
+      }
+    }
+  }
+  ant.stepsNoSig++;
+}
+
+function depositFoot(ant) {
+  const i=idx(Math.round(ant.x),Math.round(ant.y));
+  if(i>=0&&i<size&&!solid[i]) pFoot[i]=clamp(pFoot[i]+0.06,0,P.satCap*1.5);
+}
+function depositHome(ant) {
+  if(ant.confidence > 0.2) {
+    stamp(pHome,ant.x,ant.y,1,0.04);
+  }
+}
+
+function nearestEnemy(x,y,range) {
+  let best=null, bestD=range*range;
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const d=dist2(x,y,e.x,e.y);
+    if(d<bestD){bestD=d;best=e;}
+  }
+  return best;
+}
+
+// ════════════════════════════════════════════════════════════
+// ENEMY UPDATE
+// ════════════════════════════════════════════════════════════
+function updateEnemy(e, dt) {
+  if(!e.alive) return;
+  const T = ENEMY_TYPES[e.type];
+
+  if(e.stagger>0){ e.stagger-=dt; return; }
+  if(e.attackCd>0) e.attackCd-=dt;
+  if(e.dmgCooldown>0) e.dmgCooldown-=dt;
+
+  e.wanderTimer -= dt;
+  if(e.wanderTimer <= 0) {
+    e.wanderAngle += rand(-1,1);
+    e.wanderTimer = rand(1.5,3);
+  }
+
+  const px=player.x, py=player.y;
+  const dToPlayer = dist(e.x,e.y,px,py);
+
+  // Determine movement target
+  let targetX=px, targetY=py;
+  let speed = T.speed;
+
+  if(T.keepDist && dToPlayer < T.keepDist) {
+    // Ranged: back away from player
+    targetX = e.x + (e.x-px)*0.5;
+    targetY = e.y + (e.y-py)*0.5;
+  }
+
+  // Toxic: seeks areas of high pheromone to corrupt
+  if(e.type === 'toxic') {
+    const localPher = get(pAttack,e.x,e.y)+get(pHome,e.x,e.y);
+    if(localPher > 0.15) {
+      // Corrupt pheromones
+      stamp(pAttack, e.x, e.y, 3, -0.4);
+      stamp(pHome,   e.x, e.y, 3, -0.3);
+      stamp(pFrenzy, e.x, e.y, 3, -0.3);
+    }
+  }
+
+  // Panicker: emit fear pheromone constantly
+  if(e.type === 'panicker') {
+    stamp(pFear, e.x, e.y, 4, 0.12*dt*20);
+  }
+
+  // Flamer: emit fear bursts in radius
+  if(e.type === 'flamer') {
+    const nearAntCount = ants.filter(a=>a.alive&&dist(a.x,a.y,e.x,e.y)<e.type==='flamer'?6:0).length;
+    if(nearAntCount > 3 || Math.random() < 0.015) {
+      stamp(pFear, e.x, e.y, T.flameRange||5, 0.6);
+      screenFlash(1.0, 0.4, 0.0, 0.3);
+    }
+  }
+
+  // Move toward target
+  const angle = Math.atan2(targetY-e.y, targetX-e.x);
+  const moveSpeed = speed * dt * 22;
+  const nx = e.x + Math.cos(angle)*moveSpeed;
+  const ny = e.y + Math.sin(angle)*moveSpeed;
+
+  // Tank bulldozes through swarm (no ant interaction slowdown)
+  if(!blocked(Math.round(nx),Math.round(ny))) {
+    // Tank: bulldoze pheromone fields
+    if(T.bulldoze) {
+      stamp(pAttack,nx,ny,3,-0.25);
+      stamp(pHome,  nx,ny,2,-0.2);
+      stamp(pFoot,  nx,ny,2,-0.2);
+    }
+    e.x=nx; e.y=ny;
+  } else {
+    // Wall slide
+    const nx2 = e.x + Math.cos(angle)*moveSpeed;
+    if(!blocked(Math.round(nx2),Math.round(e.y))) e.x=nx2;
+    else { const ny2=e.y+Math.sin(angle)*moveSpeed; if(!blocked(Math.round(e.x),Math.round(ny2))) e.y=ny2; }
+  }
+
+  // Attack player
+  if(dToPlayer <= T.attackRange && e.attackCd <= 0) {
+    if(player.invincible <= 0 && player.dmgCooldown <= 0) {
+      player.hp -= T.dmg;
+      player.dmgCooldown = P.playerDmgCooldown;
+      screenFlash(1,0.1,0.05,0.4);
+      spawnFloat(Math.round(px*CELL), Math.round(py*CELL), `-${T.dmg}`, '#e04030');
+      if(player.hp <= 0) killPlayer();
+    }
+    e.attackCd = T.attackCd;
+  }
+}
+
+function killEnemy(e) {
+  if(!e.alive) return;
+  e.alive = false;
+  game.kills++;
+  game.score += (ENEMY_TYPES[e.type].reward || 10) + game.wave * 2;
+  // Death effects
+  const T = ENEMY_TYPES[e.type];
+  if(T.pher_emit === 'fear') stamp(pFear, e.x, e.y, 5, 0.8);
+  // Spawn ant-food signal on death position
+  stamp(pAttack, e.x, e.y, 3, 0.4); // brief reward signal
+  spawnFloat(Math.round(e.x*CELL), Math.round(e.y*CELL), `+${T.reward}`, '#7cbb3c');
+}
+
+function killPlayer() {
+  if(!player.alive) return;
+  player.alive = false;
+  screenFlash(1,0,0,0.8);
+  game.phase = 'gameover';
+}
+
+// ════════════════════════════════════════════════════════════
+// PLAYER UPDATE
+// ════════════════════════════════════════════════════════════
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+window.addEventListener('keyup',   e => { keys[e.key.toLowerCase()] = false; });
+
+function updatePlayer(dt) {
+  if(!player.alive) return;
+  if(player.dmgCooldown>0)  player.dmgCooldown-=dt;
+  if(player.invincible>0)   player.invincible-=dt;
+
+  let dx=0, dy=0;
+  if(keys['w']||keys['arrowup'])    dy-=1;
+  if(keys['s']||keys['arrowdown'])  dy+=1;
+  if(keys['a']||keys['arrowleft'])  dx-=1;
+  if(keys['d']||keys['arrowright']) dx+=1;
+  if(dx!==0&&dy!==0){ dx*=0.707; dy*=0.707; }
+
+  const spd = P.playerSpeed * dt;
+  const nx = player.x + dx*spd;
+  const ny = player.y + dy*spd;
+
+  if(!blocked(Math.round(nx),Math.round(player.y))) player.x=clamp(nx,2,cols-3);
+  if(!blocked(Math.round(player.x),Math.round(ny))) player.y=clamp(ny,2,rows-3);
+
+  // Player naturally emits a small home pheromone (body presence)
+  stamp(pHome, player.x, player.y, 1, 0.02);
+
+  // Player deposits pheromone on mouse hold
+  if(game.mouse.down) {
+    applyTool(game.mouse.x, game.mouse.y, game.mouse.right);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// TOOL APPLICATION
+// ════════════════════════════════════════════════════════════
+const TOOLS = [
+  { key:'attack',  label:'ATTACK',  sub:'Draw swarm forward', color:'#7cbb3c', field:()=>pAttack,  stamp:0.5 },
+  { key:'frenzy',  label:'FRENZY',  sub:'Boost aggression',   color:'#e8a020', field:()=>pFrenzy,  stamp:0.45 },
+  { key:'retreat', label:'RETREAT', sub:'Pull swarm back',     color:'#e04030', field:()=>pRetreat, stamp:0.45 },
+  { key:'split',   label:'SPLIT',   sub:'Divide swarm lanes',  color:'#8060e0', field:()=>pSplit,   stamp:0.35 },
+  { key:'fear',    label:'FEAR',    sub:'Scatter enemies',     color:'#30c8c0', field:()=>pFear,    stamp:0.5 },
+  { key:'erase',   label:'ERASE',   sub:'Clear fields',        color:'#a08060', field:()=>null,     stamp:0 },
+];
+
+function applyTool(cx, cy, rightClick=false) {
+  const toolKey = rightClick ? 'erase' : game.tool;
+  const T = TOOLS.find(t=>t.key===toolKey);
+  if(!T) return;
+  const r = game.brush;
+  const f = T.field();
+  if(toolKey === 'erase') {
+    stamp(pAttack,  cx, cy, r, -0.8);
+    stamp(pFrenzy,  cx, cy, r, -0.8);
+    stamp(pRetreat, cx, cy, r, -0.8);
+    stamp(pSplit,   cx, cy, r, -0.8);
+    stamp(pFear,    cx, cy, r, -0.5);
+    stamp(pHome,    cx, cy, r, -0.4);
+    stamp(pFoot,    cx, cy, r, -0.5);
+  } else {
+    stamp(f, cx, cy, r, T.stamp);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// SCREEN FLASH
+// ════════════════════════════════════════════════════════════
+function screenFlash(r,g,b,a) {
+  game.screenFlash = {r:Math.round(r*255),g:Math.round(g*255),b:Math.round(b*255),a,timer:a};
+}
+
+// ════════════════════════════════════════════════════════════
+// FLOATING TEXT
+// ════════════════════════════════════════════════════════════
+function spawnFloat(px, py, text, color) {
+  game.floatTexts.push({x:px, y:py, text, color, age:0});
+}
+
+// ════════════════════════════════════════════════════════════
+// DIFFUSE ALL FIELDS
+// ════════════════════════════════════════════════════════════
+function diffuseAll() {
+  diffuse(pAttack,  P.decayAttack,  P.diffAttack);
+  diffuse(pFrenzy,  P.decayFrenzy,  P.diffFrenzy);
+  diffuse(pRetreat, P.decayRetreat, P.diffRetreat);
+  diffuse(pSplit,   P.decaySplit,   P.diffSplit);
+  diffuse(pFear,    P.decayFear,    P.diffFear);
+  diffuse(pHome,    P.decayHome,    P.diffHome);
+  diffuseFoot();
+}
+
+// ════════════════════════════════════════════════════════════
+// UPDATE LOOP
+// ════════════════════════════════════════════════════════════
+function update(dt) {
+  if(game.paused || !game.started) return;
+
+  game.timer += dt;
+
+  // Screen flash decay
+  const sf = game.screenFlash;
+  if(sf.timer > 0) {
+    sf.timer -= dt*2;
+    sf.a = Math.max(0, sf.timer);
+    const el = document.getElementById('flashOverlay');
+    el.style.background = `rgba(${sf.r},${sf.g},${sf.b},${sf.a.toFixed(2)})`;
+    if(sf.a <= 0) el.style.background='';
+  }
+
+  // Float text age
+  game.floatTexts = game.floatTexts.filter(f=>{f.age+=dt; return f.age<1.2;});
+
+  if(game.phase === 'prepare') {
+    game.prepTimer -= dt;
+    diffuseAll();
+    for(let i=0;i<2;i++) game.stepAccum+=dt; // slow ants in prep
+    processAntSteps(dt * 0.5);
+    if(game.prepTimer <= 0) {
+      game.phase = 'combat';
+      spawnWave(game.wave - 1);
+    }
+    return;
+  }
+
+  if(game.phase === 'combat') {
+    diffuseAll();
+
+    updatePlayer(dt);
+
+    // Ant steps
+    processAntSteps(dt);
+
+    // Enemy updates
+    for(const e of enemies) updateEnemy(e, dt);
+
+    // Remove dead enemies
+    const aliveEnemies = enemies.filter(e=>e.alive);
+    if(aliveEnemies.length === 0 && enemies.length > 0) {
+      waveComplete();
+    }
+
+    // Ant deaths from enemies
+    for(const ant of ants) {
+      if(!ant.alive) continue;
+      for(const e of enemies) {
+        if(!e.alive) continue;
+        if(dist(ant.x,ant.y,e.x,e.y) < 1.5) {
+          const T = ENEMY_TYPES[e.type];
+          ant.hp -= (T.dmg * 0.04) * (T.bulldoze ? 3 : 1);
+          if(ant.hp <= 0) { ant.alive=false; game.deaths++; }
+        }
+      }
+    }
+
+    return;
+  }
+
+  if(game.phase === 'intermission') {
+    game.prepTimer -= dt;
+    diffuseAll();
+    processAntSteps(dt * 0.3);
+    if(game.prepTimer <= 0) {
+      game.wave++;
+      game.prepTimer = 5.0;
+      game.phase = 'prepare';
+      // Respawn dead ants
+      const W = WAVES[(game.wave-1) % WAVES.length];
+      while(ants.filter(a=>a.alive).length < W.antCount) ants.push(spawnAnt());
+      showOverlay(false);
+    }
+  }
+}
+
+function processAntSteps(dt) {
+  game.stepAccum += dt;
+  const STEP_RATE = P.antSpeed;
+  while(game.stepAccum >= STEP_RATE) {
+    for(const ant of ants) {
+      if(ant.alive) updateAnt(ant, STEP_RATE);
+    }
+    game.stepAccum -= STEP_RATE;
+  }
+}
+
+function waveComplete() {
+  const W = WAVES[(game.wave-1) % WAVES.length];
+  game.score += W.reward;
+  game.phase = 'intermission';
+  game.prepTimer = 6.0;
+
+  const isLast = game.wave >= WAVES.length;
+  const overlay = document.getElementById('overlayMsg');
+  document.getElementById('overlayTitle').textContent = isLast ? 'VICTORY' : `WAVE ${game.wave} CLEAR`;
+  document.getElementById('overlayBody').textContent = isLast
+    ? `All waves defeated. Final score: ${game.score}. The swarm prevails.`
+    : `+${W.reward} pts · Wave ${game.wave+1} deploys in 6s.\n\n${WAVES[game.wave%WAVES.length]?.hint||''}`;
+  document.getElementById('overlayBtn').textContent = isLast ? 'PLAY AGAIN' : 'SKIP WAIT';
+  document.getElementById('overlayBtn').onclick = isLast ? restartGame : ()=>{game.prepTimer=0.1; hideOverlay();};
+  overlay.classList.add('show');
+  setTimeout(()=>overlay.classList.remove('show'), 5500);
+}
+
+function showOverlay(persistent=true) {
+  document.getElementById('overlayMsg').classList.add('show');
+}
+function hideOverlay() {
+  document.getElementById('overlayMsg').classList.remove('show');
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════
+function colorAlpha(r,g,b,v,mult=1.1) {
+  if(v<=0.015) return null;
+  return `rgba(${r},${g},${b},${Math.min(0.9,v*mult)})`;
+}
+
+function render() {
+  // Background — dark grid
+  ctx.fillStyle = '#0a0c08';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    ctx.fillStyle = ((x+y)%2===0)?'#0b0d09':'#0a0c08';
+    ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+  }
+
+  // Pheromone fields
+  for(let y=0; y<rows; y++) {
+    for(let x=0; x<cols; x++) {
+      const i=idx(x,y);
+      const atk = pAttack[i], fren = pFrenzy[i], ret = pRetreat[i];
+      const spl = pSplit[i],  fear = pFear[i],   home = pHome[i], foot = pFoot[i];
+
+      // Layer pheromones
+      let drawn = false;
+      if(atk>0.015) {
+        ctx.fillStyle=`rgba(100,180,40,${Math.min(0.82,atk*1.2)})`;
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL); drawn=true;
+      }
+      if(fren>0.015) {
+        ctx.fillStyle=`rgba(220,150,20,${Math.min(0.75,fren*1.1)})`;
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      }
+      if(ret>0.015) {
+        ctx.fillStyle=`rgba(200,50,30,${Math.min(0.7,ret*1.1)})`;
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      }
+      if(spl>0.015) {
+        ctx.fillStyle=`rgba(110,80,210,${Math.min(0.68,spl*1.0)})`;
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      }
+      if(fear>0.015) {
+        ctx.fillStyle=`rgba(30,180,170,${Math.min(0.65,fear*1.0)})`;
+        ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      }
+      if(!drawn) {
+        if(game.showTrail && foot>0.015) {
+          ctx.fillStyle=`rgba(60,90,40,${Math.min(0.5,foot*2)})`;
+          ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+        }
+        if(home>0.02) {
+          ctx.fillStyle=`rgba(70,100,35,${Math.min(0.5,home*0.7)})`;
+          ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+        }
+      }
+    }
+  }
+
+  // Walls
+  for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+    if(solid[idx(x,y)]) {
+      ctx.fillStyle = permanent[idx(x,y)] ? '#282a1e' : '#333520';
+      ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+      ctx.fillStyle='rgba(0,0,0,0.4)';
+      ctx.fillRect(x*CELL,y*CELL+CELL-1,CELL,1);
+      ctx.fillRect(x*CELL+CELL-1,y*CELL,1,CELL);
+    }
+  }
+
+  // Nest
+  ctx.fillStyle='#1a2c10';
+  ctx.fillRect((NEST.x-NEST.r)*CELL,(NEST.y-NEST.r)*CELL,(NEST.r*2+1)*CELL,(NEST.r*2+1)*CELL);
+  ctx.fillStyle='#3a6820';
+  ctx.beginPath();
+  ctx.arc(NEST.x*CELL+CELL/2, NEST.y*CELL+CELL/2, NEST.r*CELL*0.7, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle='rgba(124,187,60,0.8)';
+  ctx.font=`700 ${Math.max(8,CELL*1.4)}px Space Mono`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('N', NEST.x*CELL+CELL/2, NEST.y*CELL+CELL/2+1);
+
+  // Ants
+  for(const ant of ants) {
+    if(!ant.alive) continue;
+    const blink = (ant.hp < 2) && (Math.floor(game.timer*8)%2===0);
+    if(blink) continue;
+    const agitated = ant.combat > 0.4 || ant.frenzy > 0.3;
+    const panicking = ant.panic > 0.5;
+    if(panicking) ctx.fillStyle='rgba(200,200,80,0.9)';
+    else if(agitated) ctx.fillStyle='rgba(240,180,40,0.95)';
+    else ctx.fillStyle='rgba(210,220,170,0.8)';
+    const s = agitated ? CELL*0.55 : CELL*0.45;
+    ctx.fillRect(ant.x*CELL+(CELL-s)/2, ant.y*CELL+(CELL-s)/2, s, s);
+  }
+
+  // Enemies
+  for(const e of enemies) {
+    if(!e.alive) continue;
+    const T = ENEMY_TYPES[e.type];
+    const hpRatio = e.hp/e.maxHp;
+    const flash = e.dmgCooldown > 0 && Math.floor(game.timer*12)%2===0;
+    ctx.fillStyle = flash ? '#ffffff' : T.color2;
+    const s = T.size * CELL * 0.7;
+    ctx.fillRect(e.x*CELL-s/2, e.y*CELL-s/2, s, s);
+    ctx.fillStyle = T.color;
+    const s2 = s*0.6;
+    ctx.fillRect(e.x*CELL-s2/2, e.y*CELL-s2/2, s2, s2);
+    // HP bar
+    if(hpRatio < 1) {
+      const bw=s, bh=2;
+      ctx.fillStyle='#300';
+      ctx.fillRect(e.x*CELL-s/2, e.y*CELL-s/2-4, bw, bh);
+      ctx.fillStyle=hpRatio>0.5?'#7cbb3c':'#e04030';
+      ctx.fillRect(e.x*CELL-s/2, e.y*CELL-s/2-4, bw*hpRatio, bh);
+    }
+    // Type label
+    ctx.fillStyle='rgba(200,200,200,0.6)';
+    ctx.font=`${Math.max(6,CELL*0.6)}px Space Mono`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(e.type[0].toUpperCase(), e.x*CELL, e.y*CELL);
+  }
+
+  // Player
+  if(player.alive) {
+    const blink = player.invincible>0&&Math.floor(game.timer*10)%2===0;
+    if(!blink) {
+      const px=player.x*CELL, py=player.y*CELL;
+      // Body
+      ctx.fillStyle='rgba(200,230,180,0.95)';
+      ctx.beginPath();
+      ctx.arc(px+CELL/2,py+CELL/2,CELL*0.6,0,Math.PI*2);
+      ctx.fill();
+      // Outline
+      ctx.strokeStyle=player.dmgCooldown>0?'#e04030':'#7cbb3c';
+      ctx.lineWidth=1.5;
+      ctx.stroke();
+      // Direction indicator
+      ctx.fillStyle='rgba(60,100,30,0.9)';
+      ctx.fillRect(px+CELL*0.3, py+CELL*0.3, CELL*0.4, CELL*0.4);
+    }
+  }
+
+  // Floating texts
+  for(const f of game.floatTexts) {
+    const alpha = 1 - f.age/1.2;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = f.color;
+    ctx.font=`700 ${CELL*0.9}px Space Mono`;
+    ctx.textAlign='center';
+    ctx.fillText(f.text, f.x + CELL/2, f.y - f.age*24);
+    ctx.globalAlpha=1;
+  }
+
+  // Cursor
+  const toolObj = TOOLS.find(t=>t.key===game.tool);
+  ctx.strokeStyle = toolObj ? toolObj.color : '#7cbb3c';
+  ctx.lineWidth=1;
+  ctx.strokeRect(game.mouse.x*CELL,game.mouse.y*CELL,CELL*(game.brush),CELL*(game.brush));
+
+  // UI update
+  updateHUD();
+}
+
+// ════════════════════════════════════════════════════════════
+// HUD UPDATE
+// ════════════════════════════════════════════════════════════
+function updateHUD() {
+  // HP bar
+  const hpRatio = Math.max(0, player.hp/player.maxHp)*100;
+  document.getElementById('hpBar').style.width = hpRatio+'%';
+  document.getElementById('hpVal').textContent = Math.max(0,Math.floor(player.hp));
+
+  // Swarm bar
+  const aliveAnts = ants.filter(a=>a.alive).length;
+  const maxAnts   = WAVES[(game.wave-1)%WAVES.length]?.antCount || 50;
+  document.getElementById('swarmBar').style.width = (aliveAnts/maxAnts*100)+'%';
+  document.getElementById('swarmVal').textContent = aliveAnts;
+
+  // Enemy count
+  const aliveEnemies = enemies.filter(e=>e.alive).length;
+  document.getElementById('enemyCount').textContent = aliveEnemies;
+
+  // Stats
+  document.getElementById('killCount').textContent  = game.kills;
+  document.getElementById('deathCount').textContent = game.deaths;
+
+  // Panic stat
+  const panicCount = ants.filter(a=>a.alive&&a.panic>0.5).length;
+  const panicPct = aliveAnts>0 ? Math.round(panicCount/aliveAnts*100) : 0;
+  document.getElementById('panicStat').textContent = panicPct+'%';
+
+  // Density
+  let maxD=0;
+  const cellCount = new Map();
+  for(const a of ants){ if(!a.alive) continue; const k=`${Math.round(a.x)},${Math.round(a.y)}`; cellCount.set(k,(cellCount.get(k)||0)+1); }
+  for(const v of cellCount.values()) if(v>maxD) maxD=v;
+  document.getElementById('densityStat').textContent = maxD;
+
+  // Wave
+  document.getElementById('waveNum').textContent = game.wave;
+  document.getElementById('waveLabel').textContent = (WAVES[(game.wave-1)%WAVES.length]?.name)||'';
+
+  // HUD pills
+  document.getElementById('hudWave').textContent  = `WAVE ${game.wave}`;
+  document.getElementById('hudPhase').textContent = game.phase.toUpperCase();
+  document.getElementById('hudTimer').textContent = game.phase==='prepare'
+    ? `DEPLOY: ${Math.ceil(game.prepTimer)}s`
+    : game.phase==='intermission' ? `NEXT: ${Math.ceil(game.prepTimer)}s` : `t+${Math.floor(game.timer)}s`;
+  document.getElementById('hudScore').textContent = `SCORE: ${game.score}`;
+
+  // Health bar color warning
+  document.getElementById('hpBar').closest('.bar-track').style.boxShadow =
+    hpRatio < 25 ? '0 0 6px #e04030' : '';
+}
+
+// ════════════════════════════════════════════════════════════
+// GAME RESTART
+// ════════════════════════════════════════════════════════════
+function restartGame() {
+  game.wave=1; game.score=0; game.kills=0; game.deaths=0;
+  game.timer=0; game.phase='prepare'; game.prepTimer=4.0;
+  game.floatTexts=[];
+  initArena();
+  initPlayer();
+  ants.length=0; enemies.length=0;
+  const W = WAVES[0];
+  for(let i=0;i<W.antCount;i++) ants.push(spawnAnt());
+  document.getElementById('waveHint').textContent = W.hint;
+  hideOverlay();
+}
+
+// ════════════════════════════════════════════════════════════
+// INPUT
+// ════════════════════════════════════════════════════════════
+const rectToCell = e => {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: clamp(Math.floor((e.clientX-r.left)*(canvas.width/r.width)/CELL), 0, cols-1),
+    y: clamp(Math.floor((e.clientY-r.top)*(canvas.height/r.height)/CELL), 0, rows-1),
+  };
+};
+
+canvas.addEventListener('mousemove', e => Object.assign(game.mouse, rectToCell(e)));
+canvas.addEventListener('mousedown', e => { Object.assign(game.mouse, rectToCell(e)); game.mouse.down=true; game.mouse.right=e.button===2; });
+canvas.addEventListener('mouseup',   () => game.mouse.down=false);
+canvas.addEventListener('mouseleave',() => game.mouse.down=false);
+canvas.addEventListener('contextmenu',e => e.preventDefault());
+canvas.addEventListener('touchstart', e => { const t=e.touches[0]; Object.assign(game.mouse,rectToCell(t)); game.mouse.down=true; },{passive:true});
+canvas.addEventListener('touchmove',  e => { const t=e.touches[0]; Object.assign(game.mouse,rectToCell(t)); },{passive:true});
+canvas.addEventListener('touchend',   () => game.mouse.down=false);
+
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if(k===' ') { e.preventDefault(); game.paused=!game.paused; }
+  if(k==='r') restartGame();
+  if(k==='t') game.showTrail=!game.showTrail;
+  // 1-6 tool select
+  const toolIdx = parseInt(e.key) - 1;
+  if(toolIdx>=0 && toolIdx<TOOLS.length) {
+    game.tool = TOOLS[toolIdx].key;
+    refreshToolButtons();
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// BUILD TOOL UI
+// ════════════════════════════════════════════════════════════
+function buildToolUI() {
+  const grid = document.getElementById('pherGrid');
+  grid.innerHTML='';
+  TOOLS.forEach((T,i) => {
+    const b = document.createElement('button');
+    b.className='pher-btn'+(game.tool===T.key?' active':'');
+    b.dataset.tool = T.key;
+    b.innerHTML=`<span class="p-key">[${i+1}]</span><span class="p-name" style="color:${T.color}">${T.label}</span><span class="p-sub">${T.sub}</span>`;
+    b.onclick=()=>{ game.tool=T.key; refreshToolButtons(); };
+    grid.appendChild(b);
+  });
+}
+function refreshToolButtons() {
+  document.querySelectorAll('.pher-btn').forEach(b=>{
+    b.classList.toggle('active', b.dataset.tool===game.tool);
+  });
+}
+
+document.getElementById('brushSlider').oninput = e => {
+  game.brush = +e.target.value;
+  document.getElementById('brushVal').textContent = game.brush;
+};
+
+// ════════════════════════════════════════════════════════════
+// GAME OVER OVERLAY
+// ════════════════════════════════════════════════════════════
+function checkGameOver() {
+  if(game.phase==='gameover' && game.started) {
+    const overlay = document.getElementById('overlayMsg');
+    document.getElementById('overlayTitle').textContent = 'SWARM BROKEN';
+    document.getElementById('overlayBody').textContent = `Wave ${game.wave} · Score: ${game.score}\nKills: ${game.kills} · Ant deaths: ${game.deaths}\n\nThe swarm was leaderless without you.`;
+    document.getElementById('overlayBtn').textContent = 'TRY AGAIN';
+    document.getElementById('overlayBtn').onclick = restartGame;
+    overlay.classList.add('show');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// MAIN LOOP
+// ════════════════════════════════════════════════════════════
+buildToolUI();
+initArena();
+initPlayer();
+// Spawn initial ants
+const initialW = WAVES[0];
+for(let i=0;i<initialW.antCount;i++) ants.push(spawnAnt());
+
+// Show start overlay
+document.getElementById('overlayBtn').onclick = () => {
+  game.started = true;
+  document.getElementById('waveHint').textContent = WAVES[0].hint;
+  hideOverlay();
+};
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now-last)/1000);
+  last=now;
+  if(game.started) {
+    update(dt);
+    if(game.phase==='gameover') checkGameOver();
+  }
+  render();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2055 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ant Lab — Field Notes v2</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="light"] {
+      --font-display: 'Instrument Serif', Georgia, serif;
+      --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+      --font-mono: 'IBM Plex Mono', monospace;
+      --text-xs: clamp(0.7rem, 0.65rem + 0.2vw, 0.8rem);
+      --text-sm: clamp(0.8rem, 0.75rem + 0.25vw, 0.9rem);
+      --text-base: clamp(0.9rem, 0.85rem + 0.2vw, 1rem);
+      --text-lg: clamp(1.1rem, 0.95rem + 0.6vw, 1.3rem);
+      --text-xl: clamp(1.4rem, 1.1rem + 1.1vw, 1.9rem);
+      --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-5: 1.25rem; --space-6: 1.5rem;
+      --paper: #f0e9d8;
+      --paper-2: #ebe2cc;
+      --paper-3: #e5dbbf;
+      --ink: #2e2820;
+      --muted: #6b6252;
+      --faint: #a09282;
+      --border: #c0b49a;
+      --border-2: #d4c9b0;
+      --accent: #1e7f61;
+      --accent-2: #8b4513;
+      --trailA: #c38b2c;
+      --trailB: #6f62d8;
+      --alarm: #c0392b;
+      --food: #d39f30;
+      --food2: #6ea94a;
+      --wall: #6c6850;
+      --nest: #2a5c40;
+      --bg-grid: rgba(103,86,50,.055);
+      --shadow: 0 14px 32px rgba(60,44,18,.13);
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+    [data-theme="dark"] {
+      --paper: #18160f;
+      --paper-2: #211e16;
+      --paper-3: #2a2820;
+      --ink: #e8dfc7;
+      --muted: #a09078;
+      --faint: #6a6050;
+      --border: #45403a;
+      --border-2: #38342d;
+      --accent: #52c494;
+      --accent-2: #d4804a;
+      --trailA: #f0b04a;
+      --trailB: #9485ff;
+      --alarm: #e05c4e;
+      --food: #ffc24c;
+      --food2: #87d06a;
+      --wall: #55503e;
+      --nest: #3a7c5a;
+      --bg-grid: rgba(220,200,160,.03);
+      --shadow: 0 16px 36px rgba(0,0,0,.36);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: var(--text-base); }
+    body {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      grid-template-rows: 100vh;
+      background:
+        repeating-linear-gradient(0deg, transparent 0 27px, var(--bg-grid) 27px 28px),
+        repeating-linear-gradient(90deg, transparent 0 27px, rgba(143,129,96,.02) 27px 28px),
+        var(--paper);
+    }
+    .sidebar {
+      display: flex; flex-direction: column;
+      background: linear-gradient(175deg, var(--paper), var(--paper-2));
+      border-right: 1px solid var(--border);
+      box-shadow: 4px 0 18px rgba(60,44,18,.07);
+      overflow-y: auto; overflow-x: hidden;
+      scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .sidebar-inner { padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-5); min-height: 100%; }
+    .brand { display: flex; align-items: flex-start; gap: var(--space-3); }
+    .logo-mark { width: 38px; height: 38px; color: var(--accent); flex-shrink: 0; margin-top: 2px; }
+    .brand-text h1 { font-family: var(--font-display); font-size: var(--text-xl); line-height: 1.05; margin: 0; }
+    .brand-text p { margin: .2rem 0 0; font-size: var(--text-xs); color: var(--muted); font-style: italic; }
+    .theme-btn { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; transition: .18s; flex-shrink: 0; }
+    .theme-btn:hover { border-color: var(--accent); }
+    .section-label {
+      font-size: var(--text-xs); text-transform: uppercase; letter-spacing: .12em;
+      color: var(--faint); margin-bottom: var(--space-2);
+      display: flex; align-items: center; gap: var(--space-2);
+    }
+    .section-label::after { content: ''; flex: 1; height: 1px; background: var(--border-2); }
+    .ctrl-row { display: flex; gap: var(--space-2); }
+    .btn {
+      flex: 1; border: 1px solid var(--border); background: rgba(255,255,255,.14); color: var(--ink);
+      padding: .65rem .8rem; border-radius: var(--radius-sm); cursor: pointer;
+      font: 500 var(--text-sm)/1 var(--font-body); transition: .16s ease;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .btn.active { background: var(--accent); border-color: var(--accent); color: #f0ead4; font-weight: 700; }
+    .btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
+    .tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+    .tool-btn { text-align: left; }
+    .tool-btn .t-icon { display: block; font-size: .65rem; color: inherit; opacity: .65; margin-top: 2px; }
+    .slider-row { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-2); }
+    .slider-row label { font-size: var(--text-xs); color: var(--muted); white-space: nowrap; }
+    .slider-row input[type=range] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .slider-val { font-size: var(--text-xs); font-family: var(--font-mono); color: var(--accent); min-width: 1.8ch; text-align: right; }
+    .level-list { display: flex; flex-direction: column; gap: var(--space-2); }
+    .level-btn {
+      text-align: left; padding: .6rem .75rem; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-2); background: rgba(255,255,255,.1);
+      cursor: pointer; transition: .16s; font: inherit; color: var(--ink);
+      display: flex; flex-direction: column; gap: .18rem;
+    }
+    .level-btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(30,127,97,.07); }
+    .level-btn.active { border-color: var(--accent); background: rgba(30,127,97,.12); }
+    .level-btn strong { font-size: var(--text-sm); }
+    .level-btn small { font-size: var(--text-xs); color: var(--muted); }
+    .level-btn .phase-badge {
+      font-size: 9px; text-transform: uppercase; letter-spacing: .1em;
+      padding: 1px 5px; border-radius: 4px; display: inline-block; margin-top: 2px;
+    }
+    .phase-curiosity { background: rgba(200,120,40,.15); color: #8b4513; }
+    .phase-pattern { background: rgba(111,98,216,.12); color: #5048a0; }
+    .phase-mastery { background: rgba(30,127,97,.12); color: #1e7f61; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+    .stat-cell { padding: .6rem; border: 1px dashed var(--border); border-radius: var(--radius-sm); background: rgba(255,255,255,.08); }
+    .stat-cell .label { font-size: var(--text-xs); color: var(--muted); }
+    .stat-cell .value { font-size: var(--text-lg); font-family: var(--font-mono); font-weight: 600; color: var(--ink); line-height: 1.2; }
+    .legend { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); font-size: var(--text-xs); color: var(--muted); }
+    .leg { display: flex; align-items: center; gap: .35rem; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .tab-bar { display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .tab-btn { flex: 1; padding: .5rem; font: 500 var(--text-xs)/1 var(--font-body); cursor: pointer; background: transparent; border: none; color: var(--muted); transition: .15s; text-transform: uppercase; letter-spacing: .08em; }
+    .tab-btn.active { background: var(--accent); color: #f0ead4; }
+    .tab-panel { display: none; }
+    .tab-panel.visible { display: flex; flex-direction: column; gap: var(--space-3); }
+    .dev-param { display: flex; flex-direction: column; gap: .2rem; }
+    .dev-param-row { display: flex; justify-content: space-between; align-items: center; }
+    .dev-param-label { font-size: var(--text-xs); color: var(--muted); }
+    .dev-param-val { font-size: var(--text-xs); font-family: var(--font-mono); color: var(--accent); }
+    .dev-param input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
+    .dev-preset-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+    .dev-preset { font-size: var(--text-xs); padding: .3rem .6rem; border-radius: 6px; border: 1px solid var(--border); background: transparent; cursor: pointer; color: var(--muted); transition: .14s; }
+    .dev-preset:hover { border-color: var(--accent); color: var(--ink); }
+    /* TIER DISPLAY */
+    .tier-display {
+      padding: .6rem .75rem; border-radius: var(--radius-sm);
+      border: 1px solid var(--border-2); background: rgba(255,255,255,.08);
+      font-size: var(--text-xs);
+    }
+    .tier-label { font-family: var(--font-mono); font-weight: 700; font-size: var(--text-sm); }
+    .tier-S { color: #d4af37; }
+    .tier-A { color: #52c494; }
+    .tier-B { color: #6f62d8; }
+    .tier-C { color: #c38b2c; }
+    .tier-D { color: #c0392b; }
+    .tier-F { color: #888; }
+    /* BUDGET BARS */
+    .budget-row { display: flex; gap: var(--space-2); align-items: center; font-size: var(--text-xs); color: var(--muted); }
+    .budget-bar { flex: 1; height: 6px; background: var(--border-2); border-radius: 3px; overflow: hidden; }
+    .budget-fill { height: 100%; background: var(--accent); transition: width .2s; border-radius: 3px; }
+    .budget-fill.danger { background: var(--alarm); }
+    /* MAIN */
+    .main { display: flex; flex-direction: column; overflow: hidden; }
+    .hud {
+      padding: var(--space-3) var(--space-5);
+      background: linear-gradient(90deg, var(--paper-2), var(--paper));
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+      flex-shrink: 0;
+    }
+    .hud-left h2 { font-family: var(--font-display); font-size: var(--text-lg); margin: 0; line-height: 1; }
+    .hud-left p { margin: .2rem 0 0; font-size: var(--text-xs); color: var(--muted); }
+    .hud-right { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+    .pill {
+      padding: .35rem .7rem; border-radius: 999px; border: 1px solid var(--border);
+      background: rgba(255,255,255,.15); font-size: var(--text-xs);
+      font-family: var(--font-mono);
+    }
+    .pill.danger { border-color: var(--alarm); color: var(--alarm); }
+    .pill.success { border-color: var(--accent); color: var(--accent); }
+    .canvas-area { flex: 1; position: relative; overflow: hidden; background: var(--paper-3); }
+    canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; }
+    .obs-badge {
+      position: absolute; top: var(--space-3); left: var(--space-3);
+      background: rgba(240,233,215,.88); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: .55rem .75rem; max-width: 30ch;
+      backdrop-filter: blur(4px);
+    }
+    [data-theme="dark"] .obs-badge { background: rgba(33,30,22,.88); }
+    .obs-badge strong { font-size: var(--text-xs); display: block; }
+    .obs-badge span { font-size: var(--text-xs); color: var(--muted); }
+    .controls-hint {
+      position: absolute; top: var(--space-3); right: var(--space-3);
+      background: rgba(240,233,215,.72); border: 1px solid var(--border-2);
+      border-radius: var(--radius-sm); padding: .4rem .65rem;
+      font-size: var(--text-xs); color: var(--muted);
+      backdrop-filter: blur(2px);
+    }
+    [data-theme="dark"] .controls-hint { background: rgba(33,30,22,.72); }
+    /* FAILURE INDICATOR */
+    .failure-badge {
+      position: absolute; bottom: var(--space-3); left: var(--space-3);
+      background: rgba(192,57,43,.9); color: #fff;
+      border-radius: var(--radius-sm); padding: .4rem .9rem;
+      font-size: var(--text-xs); font-weight: 600;
+      opacity: 0; transition: opacity .4s;
+      pointer-events: none;
+    }
+    .failure-badge.show { opacity: 1; }
+    /* WARN */
+    .sat-warn {
+      position: absolute; bottom: var(--space-3); left: 50%; transform: translateX(-50%);
+      background: rgba(192,57,43,.88); color: #fff;
+      border-radius: var(--radius-sm); padding: .4rem .9rem;
+      font-size: var(--text-xs); font-weight: 600;
+      opacity: 0; transition: opacity .4s;
+      pointer-events: none; white-space: nowrap;
+    }
+    .sat-warn.show { opacity: 1; }
+    .footer {
+      padding: var(--space-2) var(--space-5);
+      border-top: 1px solid var(--border);
+      background: var(--paper-2);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
+    }
+    .footer span { font-size: var(--text-xs); color: var(--muted); }
+    .footer #levelFlavor { font-style: italic; }
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; opacity: 0; pointer-events: none; transition: opacity .25s;
+    }
+    .modal-bg.show { opacity: 1; pointer-events: all; }
+    .modal {
+      background: var(--paper); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: var(--space-6); max-width: 420px; width: 90%;
+      box-shadow: 0 24px 64px rgba(0,0,0,.22);
+      transform: translateY(10px); transition: transform .25s;
+    }
+    .modal-bg.show .modal { transform: translateY(0); }
+    .modal h2 { font-family: var(--font-display); font-size: var(--text-xl); margin: 0 0 .5rem; }
+    .modal p { font-size: var(--text-sm); color: var(--muted); margin: 0 0 .75rem; }
+    .modal .tier-result { font-family: var(--font-mono); font-size: 2rem; font-weight: 700; margin: .5rem 0; }
+    .modal .tier-explain { font-size: var(--text-xs); color: var(--muted); margin-bottom: 1rem; }
+    .modal-btns { display: flex; gap: var(--space-3); }
+    @media (max-width: 900px) {
+      body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 44vh; }
+      .main { min-height: 56vh; }
+    }
+  </style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-inner">
+
+    <div class="brand">
+      <svg class="logo-mark" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="16" cy="32" r="6"/><circle cx="32" cy="22" r="8"/><circle cx="49" cy="32" r="9"/>
+        <path d="M21 28l5-3m13 2l4 2M12 26L7 20m9 17L7 44m18-1l-6 8m19-7l4 8m10-13l7 7m-6-18l7-6"/>
+      </svg>
+      <div class="brand-text">
+        <h1>Ant Lab</h1>
+        <p>Field notebook v2 — emergent paths, constrained solutions</p>
+      </div>
+      <button class="theme-btn" id="themeToggle" title="Toggle theme">◐</button>
+    </div>
+
+    <div>
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="game">Notebook</button>
+        <button class="tab-btn" data-tab="dev">Dev Panel</button>
+      </div>
+    </div>
+
+    <div class="tab-panel visible" id="tab-game">
+
+      <div>
+        <div class="section-label">Experiment</div>
+        <div class="ctrl-row">
+          <button class="btn" id="resetLevel">↺ Reset</button>
+          <button class="btn" id="playPause">⏸ Pause</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Brushes</div>
+        <div class="tool-grid" id="toolGrid"></div>
+        <div class="slider-row">
+          <label>Point size</label>
+          <input id="brushSlider" type="range" min="1" max="10" value="1" />
+          <span class="slider-val" id="brushValue">1</span>
+        </div>
+      </div>
+
+      <!-- BUDGETS DISPLAY -->
+      <div id="budgetPanel" style="display:none">
+        <div class="section-label">Budgets</div>
+        <div id="budgetItems" style="display:flex;flex-direction:column;gap:.4rem"></div>
+      </div>
+
+      <!-- TIER DISPLAY -->
+      <div>
+        <div class="section-label">Tier</div>
+        <div class="tier-display">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:var(--text-xs);color:var(--muted)">Current rating</span>
+            <span class="tier-label tier-F" id="currentTier">—</span>
+          </div>
+          <div id="tierHint" style="font-size:var(--text-xs);color:var(--muted);margin-top:.25rem">Complete the level to score.</div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Fields</div>
+        <div class="level-list" id="levelList"></div>
+      </div>
+
+      <div>
+        <div class="section-label">Observations</div>
+        <div class="stats-grid">
+          <div class="stat-cell"><div class="label">Collected</div><div class="value" id="foodCollected">0</div></div>
+          <div class="stat-cell"><div class="label">Flow</div><div class="value" id="throughput">0/m</div></div>
+          <div class="stat-cell"><div class="label">Signal</div><div class="value" id="trailStrength">0.00</div></div>
+          <div class="stat-cell"><div class="label">Saturation</div><div class="value" id="satLevel">0%</div></div>
+        </div>
+        <div style="margin-top:.5rem;font-size:var(--text-xs);color:var(--muted)" id="failureIndicators"></div>
+      </div>
+
+      <div>
+        <div class="section-label">Legend</div>
+        <div class="legend">
+          <span class="leg"><i class="dot" style="background:#c38b2c"></i>Trail A</span>
+          <span class="leg"><i class="dot" style="background:#6f62d8"></i>Trail B</span>
+          <span class="leg"><i class="dot" style="background:#8fbf4a"></i>Home trail</span>
+          <span class="leg"><i class="dot" style="background:#c0392b"></i>Alarm</span>
+          <span class="leg"><i class="dot" style="background:#d39f30"></i>Sugar</span>
+          <span class="leg"><i class="dot" style="background:#f4efdf"></i>Scout</span>
+          <span class="leg"><i class="dot" style="background:#f6c04a"></i>Carrying</span>
+          <span class="leg"><i class="dot" style="background:#6b6850"></i>Permanent wall</span>
+          <span class="leg"><i class="dot" style="background:#a08c5a"></i>Soft wall</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="tab-panel" id="tab-dev">
+
+      <div>
+        <div class="section-label">Presets</div>
+        <div class="dev-preset-row">
+          <button class="dev-preset" data-preset="default">Default</button>
+          <button class="dev-preset" data-preset="chaotic">Chaotic</button>
+          <button class="dev-preset" data-preset="persistent">Persistent</button>
+          <button class="dev-preset" data-preset="windy">Windy</button>
+          <button class="dev-preset" data-preset="saturation">Saturation</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Ant Behavior</div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Ants (count)</span><span class="dev-param-val" id="dv-antCount">30</span></div>
+          <input type="range" min="5" max="100" value="30" id="dv-antCount-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Exploration rate</span><span class="dev-param-val" id="dv-explore">0.06</span></div>
+          <input type="range" min="0" max="40" value="6" id="dv-explore-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Random noise</span><span class="dev-param-val" id="dv-noise">0.05</span></div>
+          <input type="range" min="0" max="40" value="5" id="dv-noise-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Carrying bonus</span><span class="dev-param-val" id="dv-carryBonus">3.1</span></div>
+          <input type="range" min="5" max="80" value="31" id="dv-carryBonus-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Return noise</span><span class="dev-param-val" id="dv-returnNoise">0.12</span></div>
+          <input type="range" min="0" max="60" value="12" id="dv-returnNoise-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Home signal decay</span><span class="dev-param-val" id="dv-homeDecayMult">1.00</span></div>
+          <input type="range" min="50" max="150" value="100" id="dv-homeDecayMult-s">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Pheromone Physics</div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Player trail decay (λ)</span><span class="dev-param-val" id="dv-pDecay">0.9996</span></div>
+          <input type="range" min="9960" max="9999" value="9996" id="dv-pDecay-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Home trail decay</span><span class="dev-param-val" id="dv-hDecay">0.9997</span></div>
+          <input type="range" min="9960" max="9999" value="9997" id="dv-hDecay-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Stamp strength</span><span class="dev-param-val" id="dv-stamp">0.34</span></div>
+          <input type="range" min="5" max="100" value="34" id="dv-stamp-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Saturation cap</span><span class="dev-param-val" id="dv-satCap">1.0</span></div>
+          <input type="range" min="50" max="300" value="100" id="dv-satCap-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Saturation penalty</span><span class="dev-param-val" id="dv-satPen">0.8</span></div>
+          <input type="range" min="0" max="100" value="80" id="dv-satPen-s">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Environment</div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Wind X</span><span class="dev-param-val" id="dv-windX">0.0</span></div>
+          <input type="range" min="-30" max="30" value="0" id="dv-windX-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Wind Y</span><span class="dev-param-val" id="dv-windY">0.0</span></div>
+          <input type="range" min="-30" max="30" value="0" id="dv-windY-s">
+        </div>
+        <div class="dev-param">
+          <div class="dev-param-row"><span class="dev-param-label">Wind variability</span><span class="dev-param-val" id="dv-windVar">0.0</span></div>
+          <input type="range" min="0" max="100" value="0" id="dv-windVar-s">
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label">Diffusion Graph</div>
+        <canvas id="devGraph" width="260" height="80" style="width:100%;border-radius:8px;border:1px solid var(--border)"></canvas>
+        <div style="font-size:var(--text-xs);color:var(--muted);margin-top:.3rem">Trail A density over last 200 ticks</div>
+      </div>
+
+    </div>
+
+  </div>
+</aside>
+
+<main class="main">
+  <div class="hud">
+    <div class="hud-left">
+      <h2 id="levelTitle">Field 1</h2>
+      <p id="levelGoal">Observe the colony first.</p>
+    </div>
+    <div class="hud-right">
+      <div class="pill" id="goalStatus">0 / 0</div>
+      <div class="pill" id="timerStatus">120s</div>
+      <div class="pill" id="rivalStatus" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="canvas-area" id="canvasArea">
+    <canvas id="game"></canvas>
+    <div class="obs-badge">
+      <strong id="hintTitle">Observe</strong>
+      <span id="hintText">Sketch conditions, then watch what becomes stable.</span>
+    </div>
+    <div class="controls-hint">Pixel brush · right-drag erases · Space = pause</div>
+    <div class="sat-warn" id="satWarn">⚠ Trail saturation — gradients collapsing</div>
+    <div class="failure-badge" id="failureBadge">⚠ Ant loop detected</div>
+  </div>
+
+  <div class="footer">
+    <span id="levelFlavor" style="font-style:italic">A page begins.</span>
+    <span>Understanding wins. Effort alone fails.</span>
+  </div>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <div class="modal">
+    <h2 id="modalTitle">Level Complete</h2>
+    <div class="tier-result" id="modalTier">—</div>
+    <p id="modalBody">The trail held.</p>
+    <div class="tier-explain" id="modalTierExplain"></div>
+    <div class="modal-btns">
+      <button class="btn active" id="modalNext">Next Field</button>
+      <button class="btn" id="modalRetry">↺ Retry</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ────────────────────────────────────────────────
+  // CONSTANTS & SETUP
+  // ────────────────────────────────────────────────
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const area = document.getElementById('canvasArea');
+
+  function resizeCanvas() {
+    canvas.width = area.clientWidth;
+    canvas.height = area.clientHeight;
+  }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  const cell = 8;
+  let cols, rows, size;
+  function recalcDims() {
+    cols = Math.floor(canvas.width / cell);
+    rows = Math.floor(canvas.height / cell);
+    size = cols * rows;
+  }
+  recalcDims();
+  window.addEventListener('resize', () => { recalcDims(); if(state) loadLevel(state.currentLevel); });
+
+  const idx = (x, y) => y * cols + x;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const dist2 = (x1,y1,x2,y2) => (x1-x2)**2+(y1-y2)**2;
+
+  // ────────────────────────────────────────────────
+  // DEV PARAMS
+  // ────────────────────────────────────────────────
+  const devParams = {
+    antCount: 30,
+    explore: 0.06,
+    noise: 0.05,
+    carryBonus: 3.1,
+    returnNoise: 0.12,   // NEW: noise injected into return path
+    homeDecayMult: 1.0,  // NEW: multiplier on home signal per level
+    pDecay: 0.9996,
+    hDecay: 0.9997,
+    stamp: 0.34,
+    satCap: 1.0,
+    satPen: 0.8,
+    windX: 0,
+    windY: 0,
+    windVar: 0,
+  };
+
+  const devPresets = {
+    default:     { antCount:30, explore:.06, noise:.05, carryBonus:3.1, returnNoise:.12, homeDecayMult:1.0, pDecay:.9996, hDecay:.9997, stamp:.34, satCap:1.0, satPen:.8, windX:0, windY:0, windVar:0 },
+    chaotic:     { antCount:50, explore:.22, noise:.18, carryBonus:1.8, returnNoise:.28, homeDecayMult:1.2, pDecay:.9975, hDecay:.9978, stamp:.20, satCap:1.2, satPen:.5, windX:0, windY:0, windVar:60 },
+    persistent:  { antCount:28, explore:.03, noise:.02, carryBonus:4.0, returnNoise:.05, homeDecayMult:0.8, pDecay:.9999, hDecay:.9999, stamp:.50, satCap:2.0, satPen:.95, windX:0, windY:0, windVar:0 },
+    windy:       { antCount:35, explore:.08, noise:.06, carryBonus:3.0, returnNoise:.15, homeDecayMult:1.1, pDecay:.9992, hDecay:.9993, stamp:.30, satCap:1.0, satPen:.75, windX:15, windY:5, windVar:40 },
+    saturation:  { antCount:40, explore:.04, noise:.03, carryBonus:3.5, returnNoise:.08, homeDecayMult:1.0, pDecay:.9998, hDecay:.9998, stamp:.70, satCap:0.6, satPen:.3, windX:0, windY:0, windVar:0 },
+  };
+
+  // ────────────────────────────────────────────────
+  // LEVELS — IMO-LEVEL REDESIGN
+  //
+  // KEY NEW FIELDS:
+  //   permanentWalls: []  — cannot be erased
+  //   softWalls: []       — can be erased but costs eraserBudget
+  //   eraserBudget: N     — total erase operations allowed (undefined = unlimited, but most levels use permanent walls anyway)
+  //   pheromoneBudget: N  — stroke budget
+  //   blockBudget: N      — block placements allowed
+  //   returnNoiseMult: N  — per-level home signal noise (>1 = harder return)
+  //   homeDecay: 0.xxx    — per-level home pheromone decay rate
+  //   tiers: {S,A,B,C,D}  — time thresholds in seconds (lower = better)
+  //   failureModes: []    — list of failure modes to monitor/display
+  // ────────────────────────────────────────────────
+  const levels = [
+
+    // ════════════════════════════════════════════
+    // LEVEL 1: GRADIENT BOOTSTRAP
+    // Phase: Curiosity
+    // Core insight: Home trail must be SEEDED manually — ants returning
+    //   without a home signal loop indefinitely near the food.
+    //   Player must paint a short seed near the nest so the first
+    //   returner deposits home pheromone along the correct corridor.
+    // False strategy: Paint a long direct line nest→food. This creates
+    //   foraging pressure but returning ants still loop because the
+    //   home signal hasn't formed yet. The line goes cold before
+    //   enough home pheromone builds.
+    // Required insight: Place a small Trail-A patch 4–6 cells from
+    //   the NEST (not the food) to seed the home gradient bootstrap.
+    //   Once 2–3 ants return via this seed, the loop becomes self-sustaining.
+    // ════════════════════════════════════════════
+    {
+      id: 1, name: 'Gradient Bootstrap',
+      goal: 'Deliver 10 sugar. Return path is noisy — seed the home gradient.',
+      target: 10, ants: 20, time: 150,
+      tools: ['pheromone','eraser', ], brush: 1,
+      hint: 'Ants returning from food wander without a home signal. Plant a seed near the nest, not the food.',
+      flavor: 'The colony is blind on the way back. The first returner sets the path.',
+      phase: 'curiosity',
+      insight: 'Home signal must be bootstrapped near the nest. One seed near home creates the first loop; the loop creates itself.',
+      returnNoiseMult: 1.8,   // High return noise — ants drift badly without home trail
+      homeDecay: 0.9990,      // Home pheromone decays faster — must be continuously reinforced
+      nest: {x:12, y:36, r:3},
+      foods: [{x:108, y:36, r:3, amount:200}],
+      permanentWalls: [],
+      softWalls: [],
+      tiers: { S:60, A:90, B:110, C:130, D:149 },
+      tierExplain: {
+        S: 'Seed placed within first 5s, loop self-sustains by t=30s.',
+        A: 'Correct seed placement, minor wasted strokes.',
+        B: 'Loop formed but slowly; some ants looped many times.',
+        C: 'Loop eventually formed with multiple interventions.',
+        D: 'Barely completed — chaotic ant wandering throughout.',
+      },
+      failureModes: ['loop','return-scatter'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 2: THE PERMANENT CORRIDOR
+    // Phase: Curiosity
+    // Core insight: A maze with one permanent wall that splits the
+    //   direct path. The naive solution (erase the wall) is impossible.
+    //   The corridor forces ants around a corner. The insight is that
+    //   a corner requires a pheromone *bend*, not a straight line,
+    //   and the bend must be placed BEFORE ants arrive so they follow
+    //   the curve instead of bouncing at the wall.
+    // False strategy: Draw a straight line through the wall. Blocked.
+    //   Draw a line along the bottom corridor — ants overshoot the turn.
+    //   Wait for ants to find it themselves — takes 3x longer.
+    // Required insight: Place a small pheromone "elbow" at the corner
+    //   junction. The gradient must curve — not terminate — at the turn.
+    // ════════════════════════════════════════════
+    {
+      id: 2, name: 'The Permanent Corridor',
+      goal: 'Collect 14 sugar. You cannot erase the central wall.',
+      target: 14, ants: 22, time: 160,
+      tools: ['pheromone','eraser'], brush: 1,
+      hint: 'The wall is permanent. Paint the turn, not the path. Gradients must curve at junctions.',
+      flavor: 'A corridor that cannot be removed is a constraint to reason with, not fight.',
+      phase: 'curiosity',
+      insight: 'Permanent walls define the puzzle geometry. A pheromone elbow at each corner channels flow around turns. Straight lines fail at bends.',
+      returnNoiseMult: 1.5,
+      homeDecay: 0.9992,
+      nest: {x:14, y:36, r:3},
+      foods: [{x:106, y:10, r:3, amount:220}],
+      permanentWalls: [
+        // Central L-shaped permanent barrier — cannot be erased
+        {x:40, y:0, w:4, h:50},   // vertical barrier
+        {x:40, y:50, w:70, h:4},  // horizontal connector
+      ],
+      softWalls: [],
+      tiers: { S:70, A:100, B:125, C:145, D:159 },
+      tierExplain: {
+        S: 'Elbow placed at both turns before first ant arrives, loop forms immediately.',
+        A: 'Correct elbow placement with one correction needed.',
+        B: 'Ants found path but with significant wandering at corners.',
+        C: 'Multiple strokes placed; some worked, many wasted.',
+        D: 'Path barely stabilized; heavy ongoing intervention required.',
+      },
+      failureModes: ['loop','corner-bounce'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 3: DECAY ENGINEERING
+    // Phase: Curiosity
+    // Core insight: Very fast pheromone decay. A "full path" from
+    //   nest to food decays before ants can use it. The insight:
+    //   only paint the BOTTLENECK TURN — the single point where
+    //   ants most often make the wrong choice. One point, refreshed
+    //   at the right decay rate, is more effective than a full path
+    //   that collapses before it's traversed.
+    //   False strategy: Paint the full path — decays before last ant.
+    //   Another false strategy: paint wide — wastes signal density.
+    // Required insight: Identify which 1–2 cells are the "decision
+    //   points" where without signal ants choose wrong. Paint only those.
+    // ════════════════════════════════════════════
+    {
+      id: 3, name: 'Decay Engineering',
+      goal: 'Stabilize 16 returns. Trails decay in ~8 seconds.',
+      target: 16, ants: 22, time: 170,
+      tools: ['pheromone','eraser'], brush: 1,
+      params: { pDecay: 0.9982, hDecay: 0.9985 },
+      hint: 'Full paths collapse before ants traverse them. Find the 1–2 decision points where ants diverge and paint only those.',
+      flavor: 'Decay is not the enemy. Misplaced signal is.',
+      phase: 'curiosity',
+      insight: 'In fast-decay environments, painting decision points beats painting paths. One cell at a junction, reapplied, outlasts a full corridor.',
+      returnNoiseMult: 1.4,
+      homeDecay: 0.9985,
+      nest: {x:12, y:36, r:3},
+      foods: [{x:108, y:36, r:3, amount:240}],
+      permanentWalls: [
+        {x:30, y:12, w:4, h:50},
+        {x:56, y:10, w:4, h:32},
+        {x:56, y:54, w:4, h:22},
+        {x:82, y:14, w:4, h:50},
+      ],
+      softWalls: [],
+      tiers: { S:75, A:105, B:135, C:155, D:169 },
+      tierExplain: {
+        S: 'Exactly 3–4 decision point cells painted; zero wasted area. System self-sustains by t=40s.',
+        A: 'Correct key points found with minor surrounding over-painting.',
+        B: 'Too wide — some decay waste but enough signal for completion.',
+        C: 'Full-path approach with significant re-painting effort.',
+        D: 'Constant re-painting required; barely functional.',
+      },
+      failureModes: ['trail-collapse','loop'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 4: CONGESTION INVERSION
+    // Phase: Pattern
+    // Core insight: Two food sources. One is close but narrow (1-cell gap);
+    //   one is far but wide. Naive strategy: reinforce close food → creates
+    //   massive congestion because too many ants funnel through 1 cell.
+    //   Correct strategy: sacrifice the close food (or under-signal it) and
+    //   route most ants to the far-but-wide path. The LESS obvious path
+    //   has higher throughput because it doesn't bottleneck.
+    //   Plus: eraser budget is 2 — can widen the near path slightly but
+    //   not enough to remove the bottleneck entirely.
+    // Required insight: Throughput = min(ant density, path width).
+    //   Widening the signal at the narrow point reduces pressure.
+    //   But the correct solution is flow-splitting: minor signal on near
+    //   food to keep it active without congesting, strong signal to far food.
+    // ════════════════════════════════════════════
+    {
+      id: 4, name: 'Congestion Inversion',
+      goal: 'Harvest 20 sugar. The obvious path is a bottleneck.',
+      target: 20, ants: 36, time: 180,
+      tools: ['pheromone','block','eraser'], brush: 1,
+      hint: 'Near food uses a 1-cell gap. It will jam with 36 ants. The longer path has higher throughput. Signal distribution, not path length, determines flow.',
+      flavor: 'The shortest path and the fastest path are not the same.',
+      phase: 'pattern',
+      insight: 'Optimal flow requires balancing load across paths. Overcrowding a narrow path reduces throughput below a longer, wider path. A small "dam" pheromone block on the near-path inlet distributes pressure.',
+      returnNoiseMult: 1.3,
+      homeDecay: 0.9993,
+      nest: {x:60, y:64, r:3},
+      foods: [
+        {x:30, y:10, r:2, amount:100},   // near, narrow corridor
+        {x:92, y:10, r:3, amount:260},   // far, wide access
+      ],
+      permanentWalls: [
+        // Near path forced through 1-cell gap
+        {x:14, y:26, w:30, h:4},  // left barrier
+        {x:46, y:26, w:4, h:4},   // narrows to 1 cell gap at x=42-45
+        {x:14, y:26, w:4, h:28},  // left wall
+      ],
+      softWalls: [
+        // Soft walls near far food — can open with eraser budget
+        {x:72, y:20, w:4, h:24},
+        {x:90, y:20, w:4, h:24},
+      ],
+      eraserBudget: 3,
+      tiers: { S:80, A:110, B:140, C:165, D:179 },
+      tierExplain: {
+        S: 'Flow split correctly: minor signal near, strong signal far. No congestion. Eraser used strategically.',
+        A: 'Mostly correct distribution, small congestion early.',
+        B: 'Far path utilized but late; spent too long on near path.',
+        C: 'Completed with significant congestion — far path discovered late.',
+        D: 'Relied entirely on near path; constant jam management.',
+      },
+      failureModes: ['congestion','loop'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 5: SIGNAL INTERFERENCE
+    // Phase: Pattern
+    // Core insight: Pheromone budget = 4 strokes. Saturation penalty
+    //   is severe. There's a "ghost trail" of leftover homePher from
+    //   a decoy food position (food A, which is tiny and depletes fast),
+    //   and the remaining main food B. Ghost trail pulls ants away from B.
+    //   Using 1 of your 4 strokes to erase the ghost trail tip is worth
+    //   more than adding new signal anywhere else.
+    //   False strategy: Use all 4 strokes on food-B path — saturates,
+    //   gradient collapses, ants spin. Or: ignore ghost trail, ants keep
+    //   re-routing to empty food A location.
+    // Required insight: The eraser tool reduces home pheromone too.
+    //   Selectively erasing the OLD home trail stub at the food-A area
+    //   removes the attractor and redirects the colony to B.
+    //   The key intervention is subtraction, not addition.
+    // ════════════════════════════════════════════
+    {
+      id: 5, name: 'Signal Interference',
+      goal: 'Reach 22 deliveries. Max 4 pheromone strokes. Erase the attractor, not just add signal.',
+      target: 22, ants: 36, time: 185,
+      tools: ['pheromone','eraser'], brush: 1,
+      hint: 'Food A depletes fast, but its ghost trail persists. One erase stroke at the right location outperforms four signal additions.',
+      flavor: 'A stale attractor is louder than an empty space. Subtraction is strategy.',
+      phase: 'pattern',
+      insight: 'Home pheromone ghost trails redirect foragers to empty sources. The correct intervention erases the ghost, not re-paints the live source.',
+      returnNoiseMult: 1.4,
+      homeDecay: 0.9988,
+      pheromoneBudget: 4,
+      nest: {x:60, y:64, r:3},
+      foods: [
+        {x:22, y:14, r:2, amount:20},   // depletes in ~20s, leaves ghost trail
+        {x:96, y:14, r:3, amount:280},  // main food
+      ],
+      permanentWalls: [
+        {x:56, y:22, w:8, h:36},  // central divider
+      ],
+      softWalls: [],
+      tiers: { S:80, A:110, B:145, C:170, D:184 },
+      tierExplain: {
+        S: 'Erased ghost trail within 5s of depletion, added 1 signal stroke to food B. System stable.',
+        A: 'Ghost trail erased correctly, 1–2 extra strokes placed.',
+        B: 'Ghost trail erased late; colony split for a while.',
+        C: 'Used most strokes on additions; erased ghost only after congestion.',
+        D: 'Never erased ghost; struggled with split colony throughout.',
+      },
+      failureModes: ['ghost-attractor','loop','saturation'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 6: TEMPORAL SEPARATION
+    // Phase: Pattern
+    // Core insight: Two food sources in completely different zones, but
+    //   the ant colony forms one big attractor on whichever they find first.
+    //   The INSIGHT: the home signal from the two zones interferes, so
+    //   returning ants from zone B accidentally reinforce zone A's return
+    //   path (they're nearby). Solution: place a wall (from block budget=3)
+    //   NOT to block movement, but to CHANNEL the home pheromone gradient —
+    //   a short wall segment that prevents home trail from zone B from
+    //   bleeding into zone A's corridor. This is counter-intuitive because
+    //   walls seem like barriers, not signal separators.
+    // False strategy: Paint two separate trails — the home trails still
+    //   bleed and interfere. Or add blocks on the food positions — wastes budget.
+    // Required insight: Walls can be used as gradient fences, not movement barriers.
+    //   A 3-4 cell wall segment between the two return corridors prevents home
+    //   trail mixing, allowing both sources to stabilize independently.
+    // ════════════════════════════════════════════
+    {
+      id: 6, name: 'Temporal Separation',
+      goal: 'Reach 24 deliveries. Two food zones must not interfere with each other.',
+      target: 24, ants: 38, time: 190,
+      tools: ['pheromone','block','eraser'], brush: 1,
+      hint: 'The two return corridors share space. Walls used as gradient fences, not movement barriers, separate the home signals.',
+      flavor: 'Separation is not always a wall you walk through. Sometimes it is one you smell.',
+      phase: 'pattern',
+      insight: 'Home pheromone bleeds across open space. A short wall perpendicular to the return corridors acts as a gradient fence — preventing interference without blocking ant movement.',
+      returnNoiseMult: 1.6,
+      homeDecay: 0.9990,
+      blockBudget: 4,
+      nest: {x:60, y:64, r:3},
+      foods: [
+        {x:18, y:12, r:3, amount:180},
+        {x:102, y:12, r:3, amount:180},
+      ],
+      permanentWalls: [
+        {x:38, y:6, w:4, h:42},   // left-center divider
+        {x:78, y:6, w:4, h:42},   // right-center divider
+        {x:42, y:44, w:36, h:4},  // horizontal crossbeam
+      ],
+      softWalls: [],
+      tiers: { S:80, A:115, B:145, C:170, D:189 },
+      tierExplain: {
+        S: 'Gradient fence placed within first 10s. Both sources stabilized independently. Minimal pheromone used.',
+        A: 'Fence placed correctly but with 1–2 extra interventions.',
+        B: 'Interference occurred early but corrected by mid-game.',
+        C: 'Completed with significant cross-interference throughout.',
+        D: 'Both sources competed; system never truly stabilized.',
+      },
+      failureModes: ['interference','ghost-attractor','loop'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 7: PHASE TRANSITION
+    // Phase: Mastery
+    // Core insight: Dual nest (A and B). Shared central food.
+    //   Home pheromone from nest A and nest B overlap on the return
+    //   path from food. If they mix equally, all ants go to BOTH nests
+    //   randomly — delivery count is halved. The required insight:
+    //   the two home trails must be spatially PHASE-SHIFTED — nest A
+    //   trail goes on the left side of the corridor, nest B on the right.
+    //   Ants naturally pick the nearest home signal.
+    //   Player can only place Trail-A pheromone (near nest A region)
+    //   or Trail-B pheromone (near nest B region) — these act as
+    //   "channel markers." The spatial separation must be maintained
+    //   from food down to the fork point.
+    // False strategy: Paint one big trail from food to both nests —
+    //   ants mix, deliveries go to wrong nest randomly, never hit target.
+    //   Or: block center — creates its own congestion.
+    // Required insight: Channel-marker trails must split at the junction.
+    //   The fork must be UPSTREAM of the food, not downstream of the nest.
+    // ════════════════════════════════════════════
+    {
+      id: 7, name: 'Phase Transition',
+      goal: 'Combined 28 deliveries across both nests. Home trails must phase-separate.',
+      target: 28, ants: 48, time: 200,
+      tools: ['pheromone','pheromone2','block','eraser'], brush: 1,
+      dualNest: true,
+      hint: 'Both nests share the return path. Trail A guides nest-A ants left; Trail B guides nest-B ants right. The split must begin near the food, not the nest.',
+      flavor: 'Two home signals in the same corridor create a random walk. Spatial phase shifts create order.',
+      phase: 'mastery',
+      insight: 'Home trail interference is broken by lateral spatial separation. Trail A on the left, Trail B on the right of the shared corridor, with the split beginning upstream at the food, creates two independent gradient basins.',
+      returnNoiseMult: 1.5,
+      homeDecay: 0.9991,
+      nests: [{x:16, y:64, r:3}, {x:104, y:64, r:3}],
+      foods: [{x:60, y:12, r:4, amount:400}],
+      permanentWalls: [
+        {x:38, y:28, w:4, h:28},  // left channel wall
+        {x:78, y:28, w:4, h:28},  // right channel wall
+        {x:42, y:54, w:36, h:4},  // bottom crossbeam
+      ],
+      softWalls: [],
+      tiers: { S:90, A:130, B:160, C:185, D:199 },
+      tierExplain: {
+        S: 'Phase split placed at food level within 15s. Both home trails self-reinforce independently.',
+        A: 'Correct split with minor early mixing.',
+        B: 'Split achieved but took 60s+ to stabilize both nests.',
+        C: 'Unequal deliveries; one nest dominated throughout.',
+        D: 'Barely met target; random delivery distribution.',
+      },
+      failureModes: ['interference','loop','wrong-nest'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 8: WIND GEOMETRY
+    // Phase: Mastery
+    // Core insight: Strong directional wind that pushes Trail-A pheromone
+    //   off the intended path. Wall placement can create "pheromone pockets"
+    //   — sheltered regions where trail accumulates instead of drifting.
+    //   The insight: perpendicular walls to wind direction create a wake
+    //   zone (low-pressure side) where pheromone ACCUMULATES rather than drifts.
+    //   Player must place walls not to block ant movement but to position
+    //   them so the leeward side captures trail signal.
+    //   False strategy: Repaint trail constantly (it drifts away instantly).
+    //   Or: place walls PARALLEL to wind (no wake effect, just obstacle).
+    //   Or: place walls at food source (too far from effective zone).
+    // Required insight: Wake vortex geometry — walls must be placed
+    //   PERPENDICULAR to wind, upstream of the critical path segment.
+    //   The pocket forms downwind of the wall.
+    // ════════════════════════════════════════════
+    {
+      id: 8, name: 'Wind Geometry',
+      goal: 'Sustain 26 deliveries against strong rightward wind.',
+      target: 26, ants: 40, time: 215,
+      tools: ['pheromone','block','eraser'], brush: 1,
+      params: { windX: 0.18, windY: 0.01, windVar: 50 },
+      hint: 'Wind destroys trails painted parallel to it. Walls placed perpendicular to wind create wake pockets where pheromone accumulates. Build the geometry, not the trail.',
+      flavor: 'You cannot paint faster than the wind erases. You must change what the wind touches.',
+      phase: 'mastery',
+      insight: 'Walls perpendicular to wind create turbulent wake zones where pheromone concentration is preserved. The ant path should run through the leeward side of a wall array, not through open space.',
+      returnNoiseMult: 1.6,
+      homeDecay: 0.9988,
+      blockBudget: 8,
+      nest: {x:8, y:36, r:3},
+      foods: [{x:112, y:36, r:4, amount:360}],
+      permanentWalls: [
+        // Provides partial structure but not full wind coverage
+        {x:26, y:14, w:4, h:22},
+        {x:26, y:48, w:4, h:22},
+        {x:52, y:0, w:4, h:26},
+        {x:52, y:44, w:4, h:32},
+        {x:78, y:14, w:4, h:20},
+        {x:78, y:50, w:4, h:20},
+      ],
+      softWalls: [],
+      tiers: { S:90, A:130, B:165, C:195, D:214 },
+      tierExplain: {
+        S: 'Perpendicular wake-array created within 20s. Pheromone pockets stable. Minimal repainting needed.',
+        A: 'Correct geometry with 1–2 correction strokes per minute.',
+        B: 'Pockets formed but with gaps; trail occasionally disrupted.',
+        C: 'Mostly parallel walls; some lucky pockets but system fragile.',
+        D: 'Relied on repainting; barely met target.',
+      },
+      failureModes: ['trail-collapse','wind-scatter','loop'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 9: ADVERSARIAL GRADIENT
+    // Phase: Mastery
+    // Core insight: Rival colony. Two food sources symmetrically placed.
+    //   The rival colony has a natural advantage — their nest is
+    //   geometrically closer to both foods. Naive strategy: race them
+    //   to reinforce your own paths. Fails because they'll win the
+    //   reinforcement race on at least one food.
+    //   Correct strategy: USE Trail-B (alarm pheromone) NOT near
+    //   your own paths, but placed as a GRADIENT DECOY near the
+    //   RIVAL'S primary attractor. This disrupts their home trail
+    //   near THEIR nest, causing their foragers to scatter. While
+    //   they're reorganizing, your colony consolidates on the better food.
+    //   False strategy: Alarm near rival food → too far from their nest,
+    //   minimal disruption. Or: alarm everywhere → disrupts your ants too.
+    // Required insight: Rival home pheromone gradient is their navigation
+    //   backbone. Disrupt it at the gradient SOURCE (near rival nest),
+    //   not at the food. A small Trail-B smear 5–8 cells from their nest
+    //   entrance decoheres their return stream.
+    // ════════════════════════════════════════════
+    {
+      id: 9, name: 'Adversarial Gradient',
+      goal: 'Beat rival colony to 30 deliveries. Disrupt their home gradient, not their path.',
+      target: 30, ants: 30, rivalAnts: 32, time: 225,
+      tools: ['pheromone','pheromone2','block','eraser'], brush: 1,
+      rival: true,
+      hint: 'Rival ants use a home gradient to return. Smearing Trail B near THEIR nest exit — not the food — decoheres their return stream. Timing matters: wait until they have built their trail, then disrupt.',
+      flavor: 'Disruption placed at a gradient source propagates through the whole system. A distraction at the food is ignored. A noise at home is catastrophic.',
+      phase: 'mastery',
+      insight: 'Home trail gradient disruption near the rival nest entry causes their return-path decoherence. The disruption must hit the gradient source, not a downstream segment.',
+      returnNoiseMult: 1.4,
+      homeDecay: 0.9991,
+      nest: {x:8, y:36, r:3},
+      rivalNest: {x:112, y:36, r:3},
+      foods: [
+        {x:60, y:12, r:3, amount:200},
+        {x:60, y:60, r:3, amount:200},
+      ],
+      permanentWalls: [
+        {x:44, y:26, w:32, h:4},
+        {x:44, y:46, w:32, h:4},
+        {x:60, y:30, w:4, h:16},
+      ],
+      softWalls: [],
+      tiers: { S:100, A:145, B:180, C:210, D:224 },
+      tierExplain: {
+        S: 'Disruption placed at rival nest within 30s of their trail forming. Colony consolidates food top. Clean win.',
+        A: 'Correct disruption placement but slightly delayed.',
+        B: 'Disruption worked but took 2 attempts; lead was thin.',
+        C: 'Disruption placed at food (wrong location); partial effect.',
+        D: 'Never disrupted; relied solely on own reinforcement; barely won.',
+      },
+      failureModes: ['interference','loop','outcompeted'],
+    },
+
+    // ════════════════════════════════════════════
+    // LEVEL 10: CIRCULATION PROOF
+    // Phase: Mastery
+    // Core insight: Three food sources arranged in a triangle.
+    //   A large outer wall with two narrow gates and an inner chamber.
+    //   The colony must create three INDEPENDENT loops (one per food)
+    //   that don't interfere. Each loop requires:
+    //     (a) its own foraging signal,
+    //     (b) its own return path that doesn't bleed into others,
+    //     (c) timed stabilization order: stabilize the closest food first
+    //         to create initial home-trail infrastructure, then use that
+    //         infrastructure to scaffold the farther loops.
+    //   False strategy: Try to connect all three foods simultaneously —
+    //   creates massive interference and gradient collapse. Or: build one
+    //   giant loop through all three — throughput is terrible and the
+    //   path is so long it decays before cycling.
+    // Required insight: Multi-loop emergence requires STAGED intervention.
+    //   Loop 1 (center food) stabilizes in 0–40s.
+    //   Loop 2 (left food) uses the existing home trail infrastructure
+    //     from loop 1 as a "highway" for the first 60% of the return.
+    //   Loop 3 (right food) similarly branches off the common highway.
+    //   The player must sequence interventions, not place everything at once.
+    //   Using Trail B as a "lane divider" between loop 2 and loop 3
+    //   branches prevents home trail interference at the junction.
+    // ════════════════════════════════════════════
+    {
+      id: 10, name: 'Circulation Proof',
+      goal: 'Stabilize 38 deliveries across three food sources. Stage your interventions.',
+      target: 38, ants: 60, time: 270,
+      tools: ['pheromone','pheromone2','block','eraser'], brush: 1,
+      params: { windX: 0.04, windY: 0.03, windVar: 30 },
+      hint: 'Three loops cannot be built simultaneously. Stabilize center food first (it provides infrastructure). Then branch loops 2 and 3 off the existing home trail. Use Trail B as a lane divider at the branch junction.',
+      flavor: 'Three proofs, one notebook page. Each depends on the last. The page cannot be written backwards.',
+      phase: 'mastery',
+      insight: 'Staged loop emergence: first loop provides home-trail infrastructure. Second and third loops branch off it using Trail B as interference shields at junction points. Simultaneous initialization causes gradient collapse.',
+      returnNoiseMult: 1.5,
+      homeDecay: 0.9989,
+      nest: {x:60, y:64, r:3},
+      foods: [
+        {x:60, y:20, r:3, amount:180},  // center — stage 1
+        {x:22, y:36, r:3, amount:160},  // left — stage 2
+        {x:98, y:36, r:3, amount:160},  // right — stage 3
+      ],
+      permanentWalls: [
+        // Outer frame with narrow gates
+        {x:14, y:4, w:92, h:4},
+        {x:14, y:4, w:4, h:60},
+        {x:102, y:4, w:4, h:60},
+        {x:14, y:60, w:92, h:4},
+        // Inner chamber (creates forced junction)
+        {x:36, y:20, w:4, h:26},
+        {x:80, y:20, w:4, h:26},
+        {x:40, y:20, w:40, h:4},
+        {x:40, y:44, w:40, h:4},
+        // Gate narrow points
+        {x:18, y:40, w:16, h:4},  // left gate top
+        {x:86, y:40, w:16, h:4},  // right gate top
+      ],
+      softWalls: [],
+      tiers: { S:130, A:180, B:220, C:255, D:269 },
+      tierExplain: {
+        S: 'Staged in correct order; Trail B lane dividers placed before interference starts. All three loops stable by t=120s.',
+        A: 'Correct staging but Trail B dividers placed late; brief interference.',
+        B: 'Two loops stable quickly; third struggled significantly.',
+        C: 'All three attempted simultaneously; required major recovery.',
+        D: 'Completed but chaotic; significant ongoing management throughout.',
+      },
+      failureModes: ['interference','trail-collapse','loop','congestion'],
+    },
+  ];
+
+  // ────────────────────────────────────────────────
+  // TOOL DEFINITIONS
+  // ────────────────────────────────────────────────
+  const toolDefs = {
+    pheromone:  { label: 'Trail A',  sub: 'foraging signal' },
+    pheromone2: { label: 'Trail B',  sub: 'alarm / divider' },
+    block:      { label: 'Block',    sub: 'gradient fence' },
+    sugar:      { label: 'Sugar',    sub: 'food (limited)' },
+    eraser:     { label: 'Erase',    sub: 'right-drag free' },
+  };
+
+  // ────────────────────────────────────────────────
+  // STATE
+  // ────────────────────────────────────────────────
+  const state = {
+    paused: false,
+    currentLevel: 0,
+    tool: 'pheromone', brush: 1,
+    mouse: {x:0, y:0, down:false, right:false},
+    playerPher: null, playerPher2: null, homePher: null, rivalPher: null,
+    solid: null, permanent: null,  // NEW: permanent = non-erasable cells
+    ants: [], rivalAnts: [], foods: [], blocks: [],
+    deliveries: 0, rivalDeliveries: 0,
+    timer: 0, unlocked: 1,
+    throughputHistory: [],
+    pheromoneStrokes: 0,
+    blockCount: 0,
+    eraserCount: 0,
+    saturationTick: 0,
+    stepAccumulator: 0,
+    // Failure mode tracking
+    loopCounts: [],    // per ant: steps since last nest/food interaction
+    failureFlags: { loop: false, congestion: false, 'trail-collapse': false, interference: false, 'ghost-attractor': false, 'wind-scatter': false, 'wrong-nest': false, 'corner-bounce': false, 'return-scatter': false },
+  };
+
+  function allocArrays() {
+    state.playerPher  = new Float32Array(size);
+    state.playerPher2 = new Float32Array(size);
+    state.homePher    = new Float32Array(size);
+    state.rivalPher   = new Float32Array(size);
+    state.solid       = new Uint8Array(size);
+    state.permanent   = new Uint8Array(size);
+  }
+  allocArrays();
+
+  // ────────────────────────────────────────────────
+  // UTILS
+  // ────────────────────────────────────────────────
+  function setTheme(toggle=false) {
+    const root = document.documentElement;
+    const cur = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', toggle ? (cur==='dark'?'light':'dark') : (cur||'light'));
+  }
+
+  function get(arr, x, y) { x=clamp(x,0,cols-1); y=clamp(y,0,rows-1); return arr[idx(x,y)]||0; }
+  function blocked(x,y) { return x<0||x>=cols||y<0||y>=rows||state.solid[idx(x,y)]===1; }
+
+  function addRect(x,y,w,h,val=1,perm=false) {
+    for(let yy=y; yy<y+h; yy++)
+      for(let xx=x; xx<x+w; xx++)
+        if(xx>=0&&xx<cols&&yy>=0&&yy<rows) {
+          state.solid[idx(xx,yy)]=val;
+          if(perm) state.permanent[idx(xx,yy)]=1;
+        }
+  }
+
+  function stamp(arr, x, y, r, v, permanent=false) {
+    for(let yy=y-r; yy<=y+r; yy++)
+      for(let xx=x-r; xx<=x+r; xx++) {
+        if(xx<0||xx>=cols||yy<0||yy>=rows) continue;
+        const d = Math.abs(xx-x)+Math.abs(yy-y);
+        if(d<=r) {
+          const i = idx(xx,yy);
+          const cap = permanent ? devParams.satCap * 1.5 : devParams.satCap;
+          arr[i] = clamp(arr[i] + v*(1-d/(r+1)), 0, cap);
+        }
+      }
+  }
+
+  const dirs8 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  function wrappedDelta(a,b){ const n=dirs8.length; let d=(b-a+n)%n; if(d>n/2) d-=n; return d; }
+
+  function spawnAnt(nestIdx=0, rival=false) {
+    const lvl = levels[state.currentLevel];
+    const nest = rival ? lvl.rivalNest : (lvl.dualNest ? lvl.nests[nestIdx%lvl.nests.length] : lvl.nest);
+    return {
+      x: nest.x + Math.floor(rand(-2,2)),
+      y: nest.y + Math.floor(rand(-2,2)),
+      dir: Math.floor(rand(0,8)),
+      carry: 0, nestIndex: nestIdx, scout: true,
+      stepsWithoutInteraction: 0,   // loop detection
+      lastInteractionStep: 0,
+    };
+  }
+
+  // ────────────────────────────────────────────────
+  // ANT UPDATE — FIXED: return path is probabilistic
+  // ────────────────────────────────────────────────
+  function saturationPenalty(v) {
+  const opt = devParams.satCap * 0.45;
+  if (v < opt) return 1.0;
+
+  const excess = (v - opt) / (devParams.satCap - opt + 0.001);
+  return Math.max(
+    devParams.satPen,
+    1.0 - excess * (1.0 - devParams.satPen)
+  );
+}
+
+function updateAnt(ant, rival = false) {
+  const lvl = levels[state.currentLevel];
+
+  const nest = rival
+    ? lvl.rivalNest
+    : (lvl.dualNest ? lvl.nests[ant.nestIndex % lvl.nests.length] : lvl.nest);
+
+  const homeField  = rival ? state.rivalPher   : state.homePher;
+  const playerField = rival ? state.playerPher2 : state.playerPher;
+  const enemyField  = rival ? state.playerPher  : state.playerPher2;
+
+  const rn = (lvl.returnNoiseMult || 1.0) * devParams.returnNoise;
+
+  const candidates = [];
+
+  for (let offset = -2; offset <= 2; offset++) {
+    const d = (ant.dir + offset + dirs8.length) % dirs8.length;
+    const [dx, dy] = dirs8[d];
+    const nx = ant.x + dx, ny = ant.y + dy;
+
+    if (blocked(nx, ny)) continue;
+
+    let score = 0.34 - Math.abs(offset) * 0.1;
+
+    const hf = get(homeField, nx, ny);
+    const pf = get(playerField, nx, ny);
+    const ef = get(enemyField, nx, ny);
+
+    const hfSat = saturationPenalty(hf);
+    const pfSat = saturationPenalty(pf);
+
+    if (ant.carry) {
+      // =========================
+      // RETURN MODE (NO GPS)
+      // =========================
+
+      // blended navigation field (home + learned trails)
+      const returnSignal =
+        0.65 * hf * hfSat +
+        0.35 * pf * pfSat;
+
+      score += returnSignal * 1.4;
+
+      // light noise so ants don’t lock into rigid paths
+      score += rand(-rn, rn);
+
+    } else {
+      // =========================
+      // FORAGING MODE
+      // =========================
+
+      score += pf * 3.2 * pfSat; // strong learned-trail attraction
+      score += hf * 1.2 * hfSat; // mild home bias
+
+      score -= ef * 0.5; // avoid enemy trails
+
+      if (pf < 0.04 && hf < 0.03) {
+        score += devParams.explore * 0.7;
+      }
+    }
+
+    // global noise
+    score += rand(-devParams.noise, devParams.noise);
+
+    candidates.push({ d, nx, ny, score });
+  }
+
+  if (!candidates.length) {
+    ant.dir = (ant.dir + 4) % dirs8.length;
+    return;
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  let chosen = candidates[0];
+
+  // soft suboptimal choice
+  if (candidates[1] && Math.random() < 0.2) {
+    chosen = candidates[1];
+  }
+
+  // exploration bias
+  if (!ant.carry && Math.random() < devParams.explore) {
+    const exp = candidates.filter(
+      c => Math.abs(wrappedDelta(ant.dir, c.d)) <= 2
+    );
+    chosen = exp[Math.floor(rand(0, exp.length))] || chosen;
+  }
+
+  const turn = wrappedDelta(ant.dir, chosen.d);
+
+  if (Math.abs(turn) > 1 && Math.random() < 0.55) {
+    ant.dir = (ant.dir + Math.sign(turn) + dirs8.length) % dirs8.length;
+
+    const [dx, dy] = dirs8[ant.dir];
+    if (!blocked(ant.x + dx, ant.y + dy)) {
+      ant.x += dx;
+      ant.y += dy;
+    }
+  } else {
+    ant.dir = chosen.d;
+    ant.x = chosen.nx;
+    ant.y = chosen.ny;
+  }
+
+  // =========================
+  // PHEROMONE DEPOSIT
+  // =========================
+
+  if (ant.carry) {
+    const lvlHomeDecay = lvl.homeDecay || devParams.hDecay;
+
+    const depositStrength =
+      0.065 * (lvlHomeDecay > 0.9995 ? 1.0 : 0.75);
+
+    if (!rival) {
+      stamp(state.homePher, ant.x, ant.y, 1, depositStrength);
+    } else {
+      stamp(state.rivalPher, ant.x, ant.y, 1, depositStrength);
+    }
+  }
+
+  // =========================
+  // FOOD PICKUP
+  // =========================
+
+  for (const food of state.foods) {
+    if (
+      food.amount > 0 &&
+      !ant.carry &&
+      dist2(ant.x, ant.y, food.x, food.y) <= food.r * food.r
+    ) {
+      ant.carry = 1;
+      food.amount -= 1;
+      ant.scout = false;
+
+      ant.dir = (ant.dir + 4) % dirs8.length;
+      ant.stepsWithoutInteraction = 0;
+      break;
+    }
+  }
+
+  // =========================
+  // DELIVERY
+  // =========================
+
+  if (
+    dist2(ant.x, ant.y, nest.x, nest.y) <= nest.r * nest.r &&
+    ant.carry
+  ) {
+    ant.carry = 0;
+    ant.dir = (ant.dir + Math.floor(rand(-1, 2)) + dirs8.length) % dirs8.length;
+
+    if (rival) state.rivalDeliveries++;
+    else state.deliveries++;
+
+    state.throughputHistory.push(state.timer);
+    ant.stepsWithoutInteraction = 0;
+  }
+}
+
+  // ────────────────────────────────────────────────
+  // DIFFUSION
+  // ────────────────────────────────────────────────
+  function diffuse(arr, decay, windX=0, windY=0) {
+    const copy = new Float32Array(arr);
+    for(let y=1; y<rows-1; y++) {
+      for(let x=1; x<cols-1; x++) {
+        const i = idx(x,y);
+        if(state.solid[i]){ arr[i]=0; continue; }
+        const avg = (copy[i]*4 + copy[idx(x+1,y)] + copy[idx(x-1,y)] + copy[idx(x,y+1)] + copy[idx(x,y-1)]) / 8;
+        const sx=clamp(Math.round(x-windX),1,cols-2), sy=clamp(Math.round(y-windY),1,rows-2);
+        arr[i] = Math.max(copy[idx(sx,sy)]*0.16 + avg*0.84, copy[i]*0.88) * decay;
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // TOOL APPLICATION — with budget enforcement
+  // ────────────────────────────────────────────────
+  let lastStrokePos = null;
+
+  function applyTool(cx, cy, right=false) {
+    const t = right ? 'eraser' : state.tool;
+    const r = state.brush;
+    const lvl = levels[state.currentLevel];
+
+    if(t === 'pheromone') {
+      if(lvl.pheromoneBudget !== undefined) {
+        const key = `${cx},${cy}`;
+        if(key !== lastStrokePos) {
+          if(state.pheromoneStrokes >= lvl.pheromoneBudget) {
+            showSatWarn(`⚠ Stroke budget exhausted (${lvl.pheromoneBudget} max)`);
+            return;
+          }
+          state.pheromoneStrokes++;
+          lastStrokePos = key;
+        }
+      }
+      stamp(state.playerPher, cx, cy, r, devParams.stamp, true);
+    }
+    else if(t === 'pheromone2') stamp(state.playerPher2, cx, cy, r, devParams.stamp, true);
+    else if(t === 'eraser') {
+      // Check if any permanent cells are being erased — block it
+      let hitPermanent = false;
+      for(let yy=cy-r; yy<=cy+r; yy++)
+        for(let xx=cx-r; xx<=cx+r; xx++)
+          if(xx>=0&&xx<cols&&yy>=0&&yy<rows&&state.permanent[idx(xx,yy)]===1)
+            hitPermanent=true;
+      if(hitPermanent) {
+        showSatWarn('⚠ Permanent wall — cannot be erased');
+        return;
+      }
+      // Eraser budget check
+      if(lvl.eraserBudget !== undefined) {
+        if(state.eraserCount >= lvl.eraserBudget) {
+          showSatWarn(`⚠ Eraser budget exhausted (${lvl.eraserBudget} max)`);
+          return;
+        }
+        const key = `e${cx},${cy}`;
+        if(key !== lastStrokePos) {
+          state.eraserCount++;
+          lastStrokePos = key;
+        }
+      }
+      stamp(state.playerPher, cx, cy, r, -1.4);
+      stamp(state.playerPher2, cx, cy, r, -1.4);
+      stamp(state.homePher, cx, cy, r, -0.6);
+      stamp(state.rivalPher, cx, cy, r, -0.6);
+      addRect(cx-r, cy-r, r*2+1, r*2+1, 0);
+      state.blocks = state.blocks.filter(b=>!(cx>=b.x&&cx<b.x+b.w&&cy>=b.y&&cy<b.y+b.h));
+    }
+    else if(t === 'block') {
+      if(lvl.blockBudget !== undefined && state.blockCount >= lvl.blockBudget) {
+        showSatWarn(`⚠ Block budget exhausted (${lvl.blockBudget} max)`);
+        return;
+      }
+      const s = Math.max(1,r);
+      state.blocks.push({x:cx, y:cy, w:s, h:s, user:true});
+      addRect(cx, cy, s, s, 1);
+      state.blockCount++;
+    }
+    else if(t === 'sugar') {
+      if(state.foods.filter(f=>f.user).length < 3) {
+        state.foods.push({x:cx, y:cy, r:2, amount:40, user:true});
+      } else {
+        showSatWarn('⚠ Sugar limit reached (max 3)');
+      }
+    }
+  }
+
+  let satWarnTimer = 0;
+  function showSatWarn(msg='⚠ Trail saturation — gradients collapsing') {
+    const el = document.getElementById('satWarn');
+    el.textContent = msg;
+    el.classList.add('show');
+    satWarnTimer = 2.5;
+  }
+
+  // ────────────────────────────────────────────────
+  // FAILURE MODE DETECTION
+  // ────────────────────────────────────────────────
+  function detectFailures() {
+    const ants = state.ants;
+    if(!ants.length) return;
+
+    // Loop detection: count ants that have gone >120 steps without interaction
+    const looping = ants.filter(a => a.stepsWithoutInteraction > 120).length;
+    state.failureFlags.loop = looping > ants.length * 0.25;
+
+    // Congestion: count ants stacked on same cell
+    const cellDensity = new Map();
+    for(const a of ants) {
+      const k = `${Math.round(a.x)},${Math.round(a.y)}`;
+      cellDensity.set(k, (cellDensity.get(k)||0)+1);
+    }
+    const maxDensity = Math.max(...cellDensity.values());
+    state.failureFlags.congestion = maxDensity > 4;
+
+    // Trail collapse: low trail strength with active ants carrying
+    const carrying = ants.filter(a=>a.carry).length;
+    let avgHome = 0, c = 0;
+    for(let i=0; i<size; i+=30){ avgHome += state.homePher[i]; c++; }
+    avgHome /= Math.max(1,c);
+    state.failureFlags['trail-collapse'] = carrying > 3 && avgHome < 0.01;
+
+    // Return scatter: carrying ants that are moving AWAY from nest
+    const lvl = levels[state.currentLevel];
+    const nest = lvl.dualNest ? lvl.nests[0] : (lvl.nest||{x:60,y:60,r:3});
+    let scatterCount = 0;
+    for(const a of ants) {
+      if(a.carry && a.stepsWithoutInteraction > 40) scatterCount++;
+    }
+    state.failureFlags['return-scatter'] = scatterCount > ants.length * 0.15;
+  }
+
+  // ────────────────────────────────────────────────
+  // TIER CALCULATION
+  // ────────────────────────────────────────────────
+  function calcTier(time, tiers) {
+    if(time <= tiers.S) return 'S';
+    if(time <= tiers.A) return 'A';
+    if(time <= tiers.B) return 'B';
+    if(time <= tiers.C) return 'C';
+    if(time <= tiers.D) return 'D';
+    return 'F';
+  }
+
+  // ────────────────────────────────────────────────
+  // UPDATE LOOP
+  // ────────────────────────────────────────────────
+  function update(dt) {
+    if(state.paused) return;
+    const lvl = levels[state.currentLevel];
+    state.timer += dt;
+
+    if(satWarnTimer > 0) {
+      satWarnTimer -= dt;
+      if(satWarnTimer <= 0) document.getElementById('satWarn').classList.remove('show');
+    }
+
+    if(state.mouse.down) applyTool(state.mouse.x, state.mouse.y, state.mouse.right);
+
+    const lp = lvl.params || {};
+    const wVarFactor = devParams.windVar > 0 ? (1 + Math.sin(state.timer*0.45)*devParams.windVar/100) : 1;
+    const windX = (lp.windX || devParams.windX*0.1) * wVarFactor;
+    const windY = (lp.windY || devParams.windY*0.1) * wVarFactor;
+
+    const pDecay = lp.pDecay || devParams.pDecay;
+    const hDecay = (lvl.homeDecay || devParams.hDecay) * (devParams.homeDecayMult || 1.0);
+
+    diffuse(state.playerPher,  pDecay, windX, windY);
+    diffuse(state.playerPher2, pDecay, -windX*0.15, windY*0.15);
+    diffuse(state.homePher,    hDecay, windX*0.1, windY*0.1);
+    diffuse(state.rivalPher,   hDecay, -windX*0.08, -windY*0.08);
+
+    if(!state.stepAccumulator) state.stepAccumulator = 0;
+    state.stepAccumulator += dt;
+    const stepRate = 0.088;
+    while(state.stepAccumulator >= stepRate) {
+      state.ants.forEach(a => updateAnt(a, false));
+      state.rivalAnts.forEach(a => updateAnt(a, true));
+      state.stepAccumulator -= stepRate;
+    }
+
+    state.foods = state.foods.filter(f => f.amount > 0);
+
+    // Failure mode detection (every 60 frames roughly)
+    if(Math.floor(state.timer * 12) % 12 === 0) detectFailures();
+
+    // Saturation check
+    let satSum = 0, satCount = 0;
+    for(let i=0; i<size; i+=7) { satSum += state.playerPher[i]; satCount++; }
+    const avgSat = satSum / Math.max(1, satCount);
+    const satPct = Math.round(Math.min(100, avgSat / devParams.satCap * 100));
+    document.getElementById('satLevel').textContent = satPct + '%';
+    if(satPct > 75) showSatWarn('⚠ Trail saturation — gradients collapsing');
+
+    // Update live tier display
+    const tier = calcTier(state.timer, lvl.tiers);
+    const tierEl = document.getElementById('currentTier');
+    tierEl.textContent = state.deliveries > 0 ? tier : '—';
+    tierEl.className = 'tier-label tier-' + (state.deliveries > 0 ? tier : 'F');
+    document.getElementById('tierHint').textContent = state.deliveries > 0 ?
+      (lvl.tierExplain[tier] || '') : 'Make a delivery to start scoring.';
+
+    const densityHistory_val = avgSat;
+    densityHistory.shift(); densityHistory.push(densityHistory_val);
+
+    // Win
+    if(state.deliveries >= lvl.target) {
+      if(state.currentLevel+2 > state.unlocked) state.unlocked = Math.min(levels.length, state.currentLevel+2);
+      buildLevelUI();
+      state.paused = true;
+      const finalTier = calcTier(state.timer, lvl.tiers);
+      const tColors = {S:'#d4af37',A:'#52c494',B:'#6f62d8',C:'#c38b2c',D:'#c0392b',F:'#888'};
+      document.getElementById('modalTier').textContent = finalTier + ' Tier';
+      document.getElementById('modalTier').style.color = tColors[finalTier]||'#888';
+      document.getElementById('modalTierExplain').textContent = lvl.tierExplain[finalTier]||'';
+      showModal(
+        state.currentLevel === levels.length-1 ? 'Notebook Complete' : 'Field Solved',
+        `"${lvl.insight}" — Completed in ${Math.floor(state.timer)}s.`,
+        state.currentLevel < levels.length-1
+      );
+    }
+
+    // Lose
+    if(state.timer >= lvl.time && state.deliveries < lvl.target) {
+      state.paused = true;
+      document.getElementById('modalTier').textContent = 'Fail';
+      document.getElementById('modalTier').style.color = '#888';
+      document.getElementById('modalTierExplain').textContent = `Needed ${lvl.target - state.deliveries} more deliveries.`;
+      showModal('Time Expired', 'The trail design never became self-sustaining. Reconsider the system.', false);
+    }
+
+    if(lvl.rival && state.rivalDeliveries >= lvl.target && state.deliveries < lvl.target) {
+      state.paused = true;
+      document.getElementById('modalTier').textContent = 'Fail';
+      document.getElementById('modalTier').style.color = '#888';
+      document.getElementById('modalTierExplain').textContent = 'Rival colony stabilized first.';
+      showModal('Outcompeted', 'Their gradient stabilized before yours could disrupt it.', false);
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // RENDER
+  // ────────────────────────────────────────────────
+  function colorFor(v, r, g, b) {
+    if(v<=0.018) return null;
+    const a = Math.min(0.92, v * 1.1);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  function drawGrid() {
+    ctx.fillStyle = '#2a281e';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for(let y=0; y<rows; y++) for(let x=0; x<cols; x++) {
+      ctx.fillStyle = ((x+y)%2===0) ? '#2b291f' : '#2a281e';
+      ctx.fillRect(x*cell, y*cell, cell, cell);
+    }
+    for(let y=0; y<rows; y++) {
+      for(let x=0; x<cols; x++) {
+        const i = idx(x,y);
+        let c = null;
+        const pa = state.playerPher[i], pb = state.playerPher2[i];
+        const ha = state.homePher[i],   ra = state.rivalPher[i];
+        if(pa > 0.018) c = colorFor(pa, 195, 139, 44);
+        if(pb > 0.018) { const cb = colorFor(pb, 111, 98, 216); if(!c || pb>pa) c=cb; }
+        // Home trail rendered as light green-yellow
+        if(ha > 0.02)  { const ch = colorFor(ha, 143, 191, 74); if(!c || ha>Math.max(pa,pb)) c=ch; }
+        if(ra > 0.02)  { const cr = colorFor(ra, 200, 95, 95); if(!c || ra>Math.max(pa,pb,ha)) c=cr; }
+        if(c) { ctx.fillStyle=c; ctx.fillRect(x*cell, y*cell, cell, cell); }
+      }
+    }
+  }
+
+  function drawBlocks() {
+    for(let y=0; y<rows; y++) {
+      for(let x=0; x<cols; x++) {
+        const i=idx(x,y);
+        if(state.solid[i]) {
+          // Permanent walls are darker/harder looking
+          ctx.fillStyle = state.permanent[i] ? '#4a4836' : '#8a7c5a';
+          ctx.fillRect(x*cell, y*cell, cell, cell);
+          // Permanent walls get a slight highlight edge
+          if(state.permanent[i]) {
+            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+            ctx.fillRect(x*cell, y*cell+cell-1, cell, 1);
+            ctx.fillRect(x*cell+cell-1, y*cell, 1, cell);
+          }
+        }
+      }
+    }
+  }
+
+  function drawFood() {
+    state.foods.forEach(f => {
+      const ratio = f.amount / (f.startAmount || f.amount || 1);
+      ctx.fillStyle = f.user ? '#6ea94a' : '#c49228';
+      const s = (f.r*2+1)*cell;
+      ctx.fillRect((f.x-f.r)*cell, (f.y-f.r)*cell, s, s);
+      ctx.fillStyle = `rgba(255,245,200,${0.3 + ratio*0.5})`;
+      ctx.fillRect(f.x*cell+cell/4, f.y*cell+cell/4, cell/2, cell/2);
+    });
+  }
+
+  function drawNest(n, label, bg, fg) {
+    ctx.fillStyle = bg;
+    ctx.fillRect((n.x-n.r)*cell, (n.y-n.r)*cell, (n.r*2+1)*cell, (n.r*2+1)*cell);
+    ctx.fillStyle = fg;
+    ctx.beginPath();
+    ctx.arc(n.x*cell+cell/2, n.y*cell+cell/2, n.r*cell*0.62, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#f0ead6';
+    ctx.font = `700 ${Math.max(10,cell*1.6)}px IBM Plex Sans`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, n.x*cell+cell/2, n.y*cell+cell/2+1);
+  }
+
+  function drawNests() {
+    const lvl = levels[state.currentLevel];
+    if(lvl.dualNest) {
+      drawNest(lvl.nests[0], 'A', '#4a4838', '#aaa277');
+      drawNest(lvl.nests[1], 'B', '#284838', '#52c494');
+    } else {
+      drawNest(lvl.nest, 'N', '#1e3d2a', '#52c494');
+    }
+    if(lvl.rival && lvl.rivalNest) drawNest(lvl.rivalNest, 'R', '#3d1e1e', '#e07070');
+  }
+
+  function drawAnts(list, rival=false) {
+    list.forEach(a => {
+      // Ants in loop show slightly different color
+      const looping = a.stepsWithoutInteraction > 120;
+      if(a.carry) ctx.fillStyle = looping ? '#ff8800' : '#f6c04a';
+      else ctx.fillStyle = rival ? '#efb0b0' : (looping ? '#ff6666' : '#f0ead4');
+      ctx.fillRect(a.x*cell+cell/4, a.y*cell+cell/4, cell/2, cell/2);
+    });
+  }
+
+  function drawFailureOverlay() {
+    const flags = state.failureFlags;
+    const active = [];
+    if(flags.loop) active.push('⟳ Ant loops detected');
+    if(flags.congestion) active.push('⊕ Congestion point');
+    if(flags['trail-collapse']) active.push('↯ Home trail collapsed');
+    if(flags['return-scatter']) active.push('✦ Return path scatter');
+    if(flags.interference) active.push('≈ Signal interference');
+
+    const el = document.getElementById('failureIndicators');
+    if(active.length) {
+      el.innerHTML = active.map(s=>`<span style="color:var(--alarm)">${s}</span>`).join(' · ');
+      document.getElementById('failureBadge').textContent = active[0];
+      document.getElementById('failureBadge').classList.add('show');
+    } else {
+      el.textContent = '';
+      document.getElementById('failureBadge').classList.remove('show');
+    }
+  }
+
+  function drawCursor() {
+    const colors = { pheromone:'rgba(195,139,44,.9)', pheromone2:'rgba(111,98,216,.9)', block:'rgba(108,104,80,.9)', sugar:'rgba(110,169,74,.9)', eraser:'rgba(180,80,60,.7)' };
+    ctx.strokeStyle = colors[state.tool] || 'rgba(195,139,44,.9)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(state.mouse.x*cell, state.mouse.y*cell, cell*Math.max(1,state.brush), cell*Math.max(1,state.brush));
+  }
+
+  function drawDevGraph() {
+    const gc = devGraphCtx;
+    const gw = gc.canvas.width, gh = gc.canvas.height;
+    gc.fillStyle = '#2a281e';
+    gc.fillRect(0,0,gw,gh);
+    const max = Math.max(0.01, ...densityHistory);
+    gc.strokeStyle = '#c38b2c';
+    gc.lineWidth = 1.5;
+    gc.beginPath();
+    densityHistory.forEach((v,i) => {
+      const px = i/densityHistory.length * gw;
+      const py = gh - (v/max) * (gh-4) - 2;
+      i===0 ? gc.moveTo(px,py) : gc.lineTo(px,py);
+    });
+    gc.stroke();
+    const capY = gh - (devParams.satCap/max) * (gh-4) - 2;
+    gc.strokeStyle = 'rgba(192,57,43,.6)';
+    gc.setLineDash([3,3]);
+    gc.beginPath(); gc.moveTo(0,capY); gc.lineTo(gw,capY); gc.stroke();
+    gc.setLineDash([]);
+  }
+
+  function updateUI() {
+    const lvl = levels[state.currentLevel];
+    const rs = document.getElementById('rivalStatus');
+    if(lvl.rival) {
+      rs.style.display = '';
+      rs.textContent = `Rival: ${state.rivalDeliveries}`;
+    } else {
+      rs.style.display = 'none';
+    }
+    document.getElementById('goalStatus').textContent = `${state.deliveries} / ${lvl.target}`;
+    document.getElementById('timerStatus').textContent = `${Math.max(0,Math.ceil(lvl.time-state.timer))}s`;
+    document.getElementById('foodCollected').textContent = state.deliveries;
+
+    const recent = state.throughputHistory.filter(t=>state.timer-t<15).length;
+    document.getElementById('throughput').textContent = `${Math.round(recent*4)}/m`;
+
+    let avg=0, c=0;
+    for(let i=0; i<size; i+=29){ avg+=state.playerPher[i]+state.homePher[i]; c++; }
+    document.getElementById('trailStrength').textContent = (avg/Math.max(1,c)).toFixed(2);
+
+    // Budget displays
+    const bp = document.getElementById('budgetPanel');
+    const bi = document.getElementById('budgetItems');
+    const hasBudgets = lvl.pheromoneBudget!==undefined||lvl.eraserBudget!==undefined||lvl.blockBudget!==undefined;
+    bp.style.display = hasBudgets ? '' : 'none';
+    if(hasBudgets) {
+      bi.innerHTML = '';
+      const addBudget = (label, used, total) => {
+        const pct = total > 0 ? (used/total*100) : 100;
+        const row = document.createElement('div');
+        row.className = 'budget-row';
+        row.innerHTML = `<span style="min-width:5rem">${label}: ${used}/${total}</span>
+          <div class="budget-bar"><div class="budget-fill${pct>80?' danger':''}" style="width:${pct}%"></div></div>`;
+        bi.appendChild(row);
+      };
+      if(lvl.pheromoneBudget!==undefined) addBudget('Strokes', state.pheromoneStrokes, lvl.pheromoneBudget);
+      if(lvl.blockBudget!==undefined) addBudget('Blocks', state.blockCount, lvl.blockBudget);
+      if(lvl.eraserBudget!==undefined) addBudget('Erases', state.eraserCount, lvl.eraserBudget);
+    }
+
+    drawFailureOverlay();
+  }
+
+  function render() {
+    drawGrid(); drawBlocks(); drawFood(); drawNests();
+    drawAnts(state.ants, false); drawAnts(state.rivalAnts, true);
+    drawCursor(); updateUI();
+    if(document.getElementById('tab-dev').classList.contains('visible')) drawDevGraph();
+  }
+
+  // ────────────────────────────────────────────────
+  // LEVEL LOADING
+  // ────────────────────────────────────────────────
+  function loadLevel(i) {
+    state.currentLevel = i;
+    allocArrays();
+    state.ants=[]; state.rivalAnts=[]; state.foods=[]; state.blocks=[];
+    state.deliveries=0; state.rivalDeliveries=0; state.timer=0;
+    state.throughputHistory=[]; state.pheromoneStrokes=0;
+    state.blockCount=0; state.eraserCount=0;
+    lastStrokePos=null;
+    state.stepAccumulator=0;
+    state.failureFlags = { loop:false, congestion:false, 'trail-collapse':false, interference:false, 'ghost-attractor':false, 'wind-scatter':false, 'wrong-nest':false, 'corner-bounce':false, 'return-scatter':false };
+
+    const lvl = levels[i];
+    state.brush = lvl.brush||1;
+    document.getElementById('brushSlider').value = state.brush;
+    document.getElementById('brushValue').textContent = state.brush;
+
+    // Load permanent walls (non-erasable)
+    (lvl.permanentWalls||[]).forEach(w => {
+      state.blocks.push({...w, permanent:true});
+      addRect(w.x, w.y, w.w, w.h, 1, true);
+    });
+    // Load soft walls (erasable)
+    (lvl.softWalls||[]).forEach(w => {
+      state.blocks.push({...w, permanent:false});
+      addRect(w.x, w.y, w.w, w.h, 1, false);
+    });
+    // Legacy walls field
+    (lvl.walls||[]).forEach(w => {
+      state.blocks.push({...w});
+      addRect(w.x, w.y, w.w, w.h, 1);
+    });
+
+    lvl.foods.forEach(f => { state.foods.push({...f, startAmount:f.amount}); });
+
+    const antCount = devParams.antCount || lvl.ants;
+    for(let j=0;j<antCount;j++) state.ants.push(spawnAnt(j%(lvl.dualNest?lvl.nests.length:1), false));
+    for(let j=0;j<(lvl.rivalAnts||0);j++) state.rivalAnts.push(spawnAnt(0, true));
+
+    if(lvl.params) {
+      if(lvl.params.pDecay) devParams.pDecay = lvl.params.pDecay;
+      if(lvl.params.hDecay) devParams.hDecay = lvl.params.hDecay;
+      if(lvl.params.windX !== undefined) devParams.windX = lvl.params.windX * 10;
+      if(lvl.params.windY !== undefined) devParams.windY = lvl.params.windY * 10;
+      if(lvl.params.windVar !== undefined) devParams.windVar = lvl.params.windVar;
+      syncDevSliders();
+    }
+
+    state.tool = availableTools()[0];
+    refreshToolButtons();
+    buildLevelUI();
+
+    document.getElementById('levelTitle').textContent = `${lvl.id}. ${lvl.name}`;
+    document.getElementById('levelGoal').textContent = lvl.goal;
+    document.getElementById('hintTitle').textContent = {curiosity:'Curiosity', pattern:'Pattern', mastery:'Mastery'}[lvl.phase]||'Observe';
+    document.getElementById('hintText').textContent = lvl.hint;
+    document.getElementById('levelFlavor').textContent = lvl.flavor;
+    document.getElementById('rivalStatus').style.display = 'none';
+
+    // Reset tier display
+    document.getElementById('currentTier').textContent = '—';
+    document.getElementById('currentTier').className = 'tier-label tier-F';
+    document.getElementById('tierHint').textContent = 'Make a delivery to start scoring.';
+
+    state.paused = false;
+    document.getElementById('playPause').textContent = '⏸ Pause';
+    hideModal();
+  }
+
+  function availableTools() { return levels[state.currentLevel].tools; }
+
+  function buildToolUI() {
+    const grid = document.getElementById('toolGrid');
+    grid.innerHTML = '';
+    Object.entries(toolDefs).forEach(([key, def]) => {
+      const b = document.createElement('button');
+      b.className = 'btn tool-btn';
+      b.innerHTML = `${def.label}<span class="t-icon">${def.sub}</span>`;
+      b.dataset.tool = key;
+      b.onclick = () => {
+        if(availableTools().includes(key)) { state.tool=key; refreshToolButtons(); }
+      };
+      grid.appendChild(b);
+    });
+    refreshToolButtons();
+  }
+
+  function refreshToolButtons() {
+    document.querySelectorAll('.tool-btn').forEach(btn => {
+      const ok = availableTools().includes(btn.dataset.tool);
+      btn.disabled = !ok;
+      btn.style.opacity = ok ? 1 : .3;
+      btn.classList.toggle('active', state.tool===btn.dataset.tool);
+    });
+  }
+
+  const phaseLabels = { curiosity: 'Curiosity', pattern: 'Pattern', mastery: 'Mastery' };
+  function buildLevelUI() {
+    const list = document.getElementById('levelList');
+    list.innerHTML = '';
+    levels.forEach((lvl,i) => {
+      const locked = i+1 > state.unlocked;
+      const b = document.createElement('button');
+      b.className = 'level-btn' + (i===state.currentLevel?' active':'');
+      b.disabled = locked;
+      b.style.opacity = locked ? .35 : 1;
+      b.innerHTML = `<strong>${lvl.id}. ${lvl.name}</strong><small>${lvl.goal.substring(0,50)}...</small><span class="phase-badge phase-${lvl.phase}">${phaseLabels[lvl.phase]}</span>`;
+      b.onclick = () => { if(!locked) loadLevel(i); };
+      list.appendChild(b);
+    });
+  }
+
+  // ────────────────────────────────────────────────
+  // MODAL
+  // ────────────────────────────────────────────────
+  function showModal(title, body, hasNext=true) {
+    document.getElementById('modalTitle').textContent = title;
+    document.getElementById('modalBody').textContent = body;
+    document.getElementById('modalNext').style.display = hasNext ? '' : 'none';
+    document.getElementById('modalBg').classList.add('show');
+  }
+  function hideModal() { document.getElementById('modalBg').classList.remove('show'); }
+
+  document.getElementById('modalNext').onclick = () => {
+    hideModal();
+    if(state.currentLevel < levels.length-1) loadLevel(state.currentLevel+1);
+  };
+  document.getElementById('modalRetry').onclick = () => {
+    hideModal();
+    loadLevel(state.currentLevel);
+  };
+
+  // ────────────────────────────────────────────────
+  // INPUT
+  // ────────────────────────────────────────────────
+  const rectToCell = e => {
+    const r = canvas.getBoundingClientRect();
+    return {
+      x: clamp(Math.floor((e.clientX-r.left)*(canvas.width/r.width)/cell), 0, cols-1),
+      y: clamp(Math.floor((e.clientY-r.top)*(canvas.height/r.height)/cell), 0, rows-1)
+    };
+  };
+  canvas.addEventListener('mousemove', e => Object.assign(state.mouse, rectToCell(e)));
+  canvas.addEventListener('mousedown', e => { Object.assign(state.mouse, rectToCell(e)); state.mouse.down=true; state.mouse.right=e.button===2; });
+  canvas.addEventListener('mouseup', () => { state.mouse.down=false; lastStrokePos=null; });
+  canvas.addEventListener('mouseleave', () => state.mouse.down=false);
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('touchstart', e => { const t=e.touches[0]; Object.assign(state.mouse,rectToCell(t)); state.mouse.down=true; },{passive:true});
+  canvas.addEventListener('touchmove', e => { const t=e.touches[0]; Object.assign(state.mouse,rectToCell(t)); },{passive:true});
+  canvas.addEventListener('touchend', () => { state.mouse.down=false; lastStrokePos=null; });
+
+  document.getElementById('playPause').onclick = () => {
+    state.paused = !state.paused;
+    document.getElementById('playPause').textContent = state.paused ? '▶ Resume' : '⏸ Pause';
+  };
+  document.getElementById('resetLevel').onclick = () => loadLevel(state.currentLevel);
+  document.getElementById('themeToggle').onclick = () => setTheme(true);
+  document.getElementById('brushSlider').oninput = e => {
+    state.brush = +e.target.value;
+    document.getElementById('brushValue').textContent = state.brush;
+  };
+  window.addEventListener('keydown', e => {
+    if(e.key===' '){ e.preventDefault(); document.getElementById('playPause').click(); }
+    if(e.key.toLowerCase()==='r') loadLevel(state.currentLevel);
+  });
+
+  // ────────────────────────────────────────────────
+  // DEV PANEL
+  // ────────────────────────────────────────────────
+  function devSlider(id, paramKey, scale=1, digits=2) {
+    const slider = document.getElementById(id+'-s');
+    const display = document.getElementById(id);
+    if(!slider) return;
+    slider.addEventListener('input', () => {
+      const v = +slider.value * scale;
+      devParams[paramKey] = v;
+      display.textContent = v.toFixed(digits);
+    });
+  }
+  devSlider('dv-antCount', 'antCount', 1, 0);
+  devSlider('dv-explore', 'explore', 0.01, 2);
+  devSlider('dv-noise', 'noise', 0.01, 2);
+  devSlider('dv-carryBonus', 'carryBonus', 0.1, 1);
+  devSlider('dv-returnNoise', 'returnNoise', 0.01, 2);
+  devSlider('dv-homeDecayMult', 'homeDecayMult', 0.01, 2);
+  devSlider('dv-pDecay', 'pDecay', 0.0001, 4);
+  devSlider('dv-hDecay', 'hDecay', 0.0001, 4);
+  devSlider('dv-stamp', 'stamp', 0.01, 2);
+  devSlider('dv-satCap', 'satCap', 0.01, 2);
+  devSlider('dv-satPen', 'satPen', 0.01, 2);
+  devSlider('dv-windX', 'windX', 0.1, 1);
+  devSlider('dv-windY', 'windY', 0.1, 1);
+  devSlider('dv-windVar', 'windVar', 1, 0);
+
+  document.querySelectorAll('.dev-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = devPresets[btn.dataset.preset];
+      if (!p) return;
+      Object.assign(devParams, p);
+      syncDevSliders();
+    });
+  });
+
+  function syncDevSliders() {
+    const set = (id, sliderScale, val) => {
+      const s = document.getElementById(id+'-s');
+      const d = document.getElementById(id);
+      if(!s||!d) return;
+      s.value = val / sliderScale;
+      const digits = sliderScale < 0.01 ? 4 : sliderScale < 0.1 ? 2 : sliderScale < 1 ? 2 : 0;
+      d.textContent = val.toFixed(digits);
+    };
+    set('dv-antCount', 1, devParams.antCount);
+    set('dv-explore', 0.01, devParams.explore);
+    set('dv-noise', 0.01, devParams.noise);
+    set('dv-carryBonus', 0.1, devParams.carryBonus);
+    set('dv-returnNoise', 0.01, devParams.returnNoise);
+    set('dv-homeDecayMult', 0.01, devParams.homeDecayMult);
+    set('dv-pDecay', 0.0001, devParams.pDecay);
+    set('dv-hDecay', 0.0001, devParams.hDecay);
+    set('dv-stamp', 0.01, devParams.stamp);
+    set('dv-satCap', 0.01, devParams.satCap);
+    set('dv-satPen', 0.01, devParams.satPen);
+    set('dv-windX', 0.1, devParams.windX);
+    set('dv-windY', 0.1, devParams.windY);
+    set('dv-windVar', 1, devParams.windVar);
+  }
+
+  const devGraphCtx = document.getElementById('devGraph').getContext('2d');
+  const densityHistory = new Array(200).fill(0);
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('visible'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('visible');
+    });
+  });
+
+  // ────────────────────────────────────────────────
+  // BOOTSTRAP
+  // ────────────────────────────────────────────────
+  buildToolUI();
+  setTheme();
+  loadLevel(0);
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now-last)/1000);
+    last = now;
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

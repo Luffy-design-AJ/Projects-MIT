@@ -45,7 +45,7 @@ Defines how a `CastField` is shaped and how `SwarmAgent`s interpret it. See sect
 ### `SwarmTarget` (interface/contract)
 Minimal contract any engageable entity implements:
 - `take_damage(amount: float)`
-- `get_position() -> Vector2`
+- World position via the inherited `Node2D.global_position` (no separate getter — avoid shadowing `Node2D.get_position()`)
 - Detectable via proximity (e.g., a group tag or detection `Area2D`)
 
 ### `PlaceholderEnemy` (new minimal scene/script)

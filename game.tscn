@@ -1,9 +1,11 @@
-[gd_scene load_steps=3 format=3 uid="uid://8tslk3d7m3yc"]
+[gd_scene load_steps=4 format=3 uid="uid://8tslk3d7m3yc"]
 
 [ext_resource type="PackedScene" uid="uid://cfo7tbrduj4h1" path="res://scenes/Player.tscn" id="1_3cjk8"]
 [ext_resource type="PackedScene" path="res://placeholder_enemy.tscn" id="2_enemy"]
+[ext_resource type="Script" path="res://game.gd" id="3_gamesc"]
 
 [node name="Game" type="Node2D"]
+script = ExtResource("3_gamesc")
 
 [node name="Player" parent="." instance=ExtResource("1_3cjk8")]
 position = Vector2(-2, -7)
@@ -31,3 +33,11 @@ offset_right = 89.0
 offset_bottom = -18.0
 theme_override_font_sizes/font_size = 4
 text = "Current Cast: Scatter"
+
+[node name="StrengthLabel" type="Label" parent="CanvasLayer"]
+offset_left = -72.0
+offset_top = -16.0
+offset_right = 89.0
+offset_bottom = 4.0
+theme_override_font_sizes/font_size = 4
+text = "Strength: 100 / 100"

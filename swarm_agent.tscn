@@ -12,8 +12,8 @@ script = ExtResource("1_agent")
 shape = SubResource("CircleShape2D_agent")
 
 [node name="ColorRect" type="ColorRect" parent="."]
-offset_left = -4.0
-offset_top = -4.0
-offset_right = 4.0
-offset_bottom = 4.0
-color = Color(1, 1, 0, 1)
+offset_left = -3.0
+offset_top = -3.0
+offset_right = 3.0
+offset_bottom = 3.0
+color = Color(0.95, 0.78, 0.25, 1)

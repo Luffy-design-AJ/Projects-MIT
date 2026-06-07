@@ -25,8 +25,7 @@ var current_animation = ""
 
 
 @onready var animated_sprite = $AnimatedSprite2D
-var projectile_scene = preload("res://scenes/rift_projectile.tscn")
-var cast_projectile_pending = false
+@onready var swarm_controller = $SwarmController
 
 
 
@@ -53,9 +52,9 @@ func _physics_process(delta: float) -> void:
 		is_casting = true
 		cast_timer = CAST_DURATION
 
-		cast_projectile_pending = true
+		swarm_controller.cast(last_direction)
 
-		
+
 	if Input.is_action_just_pressed("eminate"):
 
 		is_eminating = true
@@ -71,18 +70,6 @@ func _physics_process(delta: float) -> void:
 
 		if cast_timer <= 0:
 			is_casting = false
-	# SPAWN PROJECTILE MID-CAST
-	if is_casting and cast_projectile_pending and cast_timer <= 0.1:
-
-		cast_projectile_pending = false
-
-		var projectile = projectile_scene.instantiate()
-
-		projectile.global_position = global_position
-
-		projectile.direction = last_direction
-
-		get_parent().add_child(projectile)
 	# EMINATE TIMER
 	if is_eminating:
 

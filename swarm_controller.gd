@@ -19,7 +19,13 @@ var directive_state: int = DirectiveState.ORBIT
 var strength_current: float = STRENGTH_CAP_BASE
 var player_level: int = 1
 
+var all_patterns: Array = []
+var unlocked_pattern_count: int = 1
+var active_pattern_index: int = 0
+var active_field: CastField = null
+
 func _ready() -> void:
+	_build_patterns()
 	for i in range(AGENT_COUNT):
 		var agent: SwarmAgent = AGENT_SCENE.instantiate()
 		agent.swarm_controller = self
@@ -42,3 +48,27 @@ func strength_cap() -> float:
 func deplete_strength(amount: float) -> void:
 	strength_current = max(strength_current - amount, 0.0)
 	strength_changed.emit(strength_current, strength_cap())
+
+func _build_patterns() -> void:
+	all_patterns = [
+		CastPattern.new("hunt", "Hunt", CastPattern.Shape.PULSE, 1.0, 1.6),
+	]
+
+func active_pattern() -> CastPattern:
+	return all_patterns[active_pattern_index]
+
+func cast(direction: Vector2, target: Node2D = null) -> void:
+	var pattern := active_pattern()
+	var field := CastField.new()
+	field.pattern = pattern
+	field.direction = direction.normalized()
+	field.anchor = target.global_position if target != null else player.global_position + direction.normalized() * 220.0
+	# Add as a sibling of Player (child of Game), NOT a child of SwarmController/Player —
+	# otherwise the field would be parented to a moving node and drift along with the
+	# player instead of staying anchored at the world point where it was cast.
+	player.get_parent().add_child(field)
+	field.global_position = player.global_position
+	active_field = field
+	directive_state = DirectiveState.CASTING
+	for agent in agents:
+		agent.enter_directed(field, pattern.speed_multiplier)

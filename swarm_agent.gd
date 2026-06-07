@@ -56,7 +56,17 @@ func _idle_steering(delta: float) -> Vector2:
 	return to_target.normalized() * orbit_speed + noise
 
 func _directed_steering() -> Vector2:
-	return Vector2.ZERO  # filled in by Task 5
+	if cast_field == null or not is_instance_valid(cast_field):
+		state = State.IDLE
+		return Vector2.ZERO
+	var sample: Array = cast_field.sample(global_position)
+	var sample_direction: Vector2 = sample[0]
+	var sample_strength: float = sample[1]
+	if sample_strength <= 0.0:
+		state = State.IDLE
+		cast_field = null
+		return Vector2.ZERO
+	return sample_direction * directed_speed * sample_strength
 
 func _separation_steering() -> Vector2:
 	var push := Vector2.ZERO
@@ -75,3 +85,8 @@ func _resolve_combat(_delta: float) -> void:
 func return_to_idle() -> void:
 	state = State.IDLE
 	cast_field = null
+
+func enter_directed(field, speed_multiplier: float) -> void:
+	state = State.DIRECTED
+	cast_field = field
+	directed_speed = DIRECTED_BASE_SPEED * speed_multiplier

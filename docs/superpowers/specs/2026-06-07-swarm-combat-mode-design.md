@@ -49,10 +49,10 @@ Minimal contract any engageable entity implements:
 - Detectable via proximity (e.g., a group tag or detection `Area2D`)
 
 ### `PlaceholderEnemy` (new minimal scene/script)
-A simple HP-bearing entity implementing `SwarmTarget`, used to validate detection, contact DOT, and Strength Pool depletion end-to-end. Not final enemy design — just a test dummy (static or simple wandering, visible HP).
+A simple HP-bearing entity implementing `SwarmTarget`, used to validate detection, contact DOT, and Strength Pool depletion end-to-end. To make pool depletion testable, it also deals periodic counter-damage (a tick on a timer) to any `SwarmAgent` currently engaged with it — this is the only counter-damage source needed for validation; richer enemy attack patterns are out of scope (see section 5). Not final enemy design — just a test dummy (static or simple wandering, visible HP).
 
 ### Player changes (`player.gd`)
-- **Cast** input now: (a) determines direction/anchor via the active aiming mode, (b) tells `SwarmController` to spawn a `CastField` shaped by the currently-selected `CastPattern`. The existing `rift_projectile` spawn is replaced by this swarm-direction call.
+- **Cast** input now: (a) determines direction/anchor via the active aiming mode, (b) tells `SwarmController` to spawn a `CastField` shaped by the currently-selected `CastPattern`. The wind-up (`CAST_DURATION`, `is_casting`/`cast_timer`, animation) is kept; the mid-cast spawn logic (`cast_projectile_pending`, the `projectile_scene` preload, and the `var projectile = projectile_scene.instantiate()` block) is removed and replaced by the `CastField`/`SwarmController` call. `rift_projectile.gd`/`.tscn` become unused and should be deleted.
 - **Cast-mode cycling**: a button/key cycles through *unlocked* patterns only; new patterns unlock through progression (UI label updates to reflect current selection — reusing the existing "Current Cast: X" label).
 - **Eminate** now calls `SwarmController.recall()` — swarm breaks off whatever it's doing and returns to orbit the player.
 - **Attack** now performs a personal melee strike (hitbox + damage), independent of the swarm.
@@ -66,6 +66,8 @@ A simple HP-bearing entity implementing `SwarmTarget`, used to validate detectio
 | **Scatter** | Wide cone, lower per-agent pull strength | Agents fan out across the cone's width, sweeping a broad area — area denial / hits groups |
 | **Loop Hunt** | Field anchored near the target/point that exerts a *tangential* (curving) pull rather than radial | Agents arc outward then orbit/encircle the anchor from multiple sides — surrounds rather than charges head-on |
 | **Bounce Hunt** | Chain of short-lived sequential waypoint fields (zigzag) | Agents chase each waypoint in turn, ricocheting toward the final target — covers ground unpredictably, can chain across multiple enemies |
+
+**Resolving an anchor point for Loop Hunt / Bounce Hunt:** these two patterns need a concrete anchor/waypoint location, but directional and mouse-aim modes only produce a direction vector, not a point. The rule: if a `SwarmTarget` exists within the cast direction/cone within range, the nearest such target is used as the anchor (matching what lock-on would pick); if no target is in range, the anchor is placed at a fixed distance along the cast direction/cursor ray. Lock-on mode always anchors directly on the selected `SwarmTarget`.
 
 **Unlock & switching:** Patterns unlock progressively through the game. The player cycles through *currently unlocked* patterns with a dedicated input (button/scroll), and the active pattern is shown via the existing UI label.
 

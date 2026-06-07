@@ -54,6 +54,7 @@ func _build_patterns() -> void:
 		CastPattern.new("hunt", "Hunt", CastPattern.Shape.PULSE, 1.0, 1.6),
 		CastPattern.new("scatter", "Scatter", CastPattern.Shape.CONE, 0.7, 1.0, 0.9),
 		CastPattern.new("loop_hunt", "Loop Hunt", CastPattern.Shape.TANGENTIAL, 1.0, 1.1, 0.6, 1.0),
+		CastPattern.new("bounce_hunt", "Bounce Hunt", CastPattern.Shape.WAYPOINT, 1.0, 1.2, 0.6, 1.0, 3),
 	]
 
 func active_pattern() -> CastPattern:
@@ -65,11 +66,10 @@ func cast(direction: Vector2, target: Node2D = null) -> void:
 	field.pattern = pattern
 	field.direction = direction.normalized()
 	field.anchor = target.global_position if target != null else player.global_position + direction.normalized() * 220.0
-	# Add as a sibling of Player (child of Game), NOT a child of SwarmController/Player —
-	# otherwise the field would be parented to a moving node and drift along with the
-	# player instead of staying anchored at the world point where it was cast.
-	player.get_parent().add_child(field)
 	field.global_position = player.global_position
+	# Sibling of Player (child of Game) — see the comment in the original cast()
+	# from Task 5: parenting to a moving node would drag the field along with it.
+	player.get_parent().add_child(field)
 	active_field = field
 	directive_state = DirectiveState.CASTING
 	for agent in agents:

@@ -45,8 +45,6 @@ func _physics_process(delta: float) -> void:
 		last_direction = direction
 
 	# CAST INPUT
-# CAST INPUT
-	# CAST INPUT
 	if Input.is_action_just_pressed("cast"):
 
 		is_casting = true

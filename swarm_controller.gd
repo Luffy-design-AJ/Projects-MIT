@@ -10,6 +10,7 @@ const STRENGTH_CAP_PER_LEVEL := 20.0
 const TARGET_SEARCH_RADIUS := 320.0
 
 signal strength_changed(current: float, cap: float)
+signal pattern_changed(pattern: CastPattern)
 
 enum DirectiveState { ORBIT, CASTING, RECALLING }
 
@@ -27,6 +28,7 @@ var active_field: CastField = null
 
 func _ready() -> void:
 	_build_patterns()
+	unlocked_pattern_count = all_patterns.size()  # TODO(progression): replace with real unlock-by-level data; see spec section 5
 	for i in range(AGENT_COUNT):
 		var agent: SwarmAgent = AGENT_SCENE.instantiate()
 		agent.swarm_controller = self
@@ -36,6 +38,7 @@ func _ready() -> void:
 		add_child(agent)
 		agents.append(agent)
 		agent.global_position = player.global_position
+	pattern_changed.emit(active_pattern())
 
 func _physics_process(delta: float) -> void:
 	var cap := strength_cap()
@@ -60,6 +63,16 @@ func _build_patterns() -> void:
 
 func active_pattern() -> CastPattern:
 	return all_patterns[active_pattern_index]
+
+func cycle_pattern() -> void:
+	if unlocked_pattern_count <= 1:
+		return
+	active_pattern_index = (active_pattern_index + 1) % unlocked_pattern_count
+	pattern_changed.emit(active_pattern())
+
+func unlock_next_pattern() -> void:
+	if unlocked_pattern_count < all_patterns.size():
+		unlocked_pattern_count += 1
 
 func cast(direction: Vector2, target: Node2D = null) -> void:
 	var pattern := active_pattern()

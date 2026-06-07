@@ -68,6 +68,8 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("toggle_aim_mode"):
 		aim_mode = (aim_mode + 1) % 3
 		print("Aim mode: ", AimMode.keys()[aim_mode])
+	if Input.is_action_just_pressed("cycle_cast_pattern"):
+		swarm_controller.cycle_pattern()
 	if Input.is_action_just_pressed("Attack"):
 		is_attacking = true
 		attack_timer = 0.5

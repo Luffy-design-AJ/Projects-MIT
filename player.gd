@@ -4,6 +4,7 @@ const SPEED = 200.0
 const DASH_SPEED = 900.0
 const DASH_DURATION = 0.099
 const CAST_DURATION = 0.84
+const MELEE_DAMAGE := 18.0
 
 var is_dashing = false
 var dash_timer = 0.0
@@ -175,8 +176,6 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
-
-const MELEE_DAMAGE := 18.0
 
 func _perform_melee_strike() -> void:
 	for area in melee_hitbox.get_overlapping_areas():

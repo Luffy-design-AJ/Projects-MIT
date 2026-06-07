@@ -53,6 +53,7 @@ func _build_patterns() -> void:
 	all_patterns = [
 		CastPattern.new("hunt", "Hunt", CastPattern.Shape.PULSE, 1.0, 1.6),
 		CastPattern.new("scatter", "Scatter", CastPattern.Shape.CONE, 0.7, 1.0, 0.9),
+		CastPattern.new("loop_hunt", "Loop Hunt", CastPattern.Shape.TANGENTIAL, 1.0, 1.1, 0.6, 1.0),
 	]
 
 func active_pattern() -> CastPattern:

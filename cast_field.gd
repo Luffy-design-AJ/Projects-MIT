@@ -23,6 +23,8 @@ func sample(world_pos: Vector2) -> Array:
 			return [direction, _falloff(global_position, world_pos) * pattern.field_strength]
 		CastPattern.Shape.CONE:
 			return _sample_cone(world_pos)
+		CastPattern.Shape.TANGENTIAL:
+			return _sample_tangential(world_pos)
 		_:
 			return [direction, 0.0]
 
@@ -34,6 +36,15 @@ func _sample_cone(world_pos: Vector2) -> Array:
 	var angle_diff: float = absf(direction.angle_to(outward))
 	var cone_factor := clamp(1.0 - angle_diff / pattern.cone_half_angle, 0.0, 1.0)
 	return [outward, _falloff(global_position, world_pos) * cone_factor * pattern.field_strength]
+
+func _sample_tangential(world_pos: Vector2) -> Array:
+	var to_anchor := anchor - world_pos
+	if to_anchor.length() < 0.001:
+		return [direction, pattern.field_strength]
+	var radial := to_anchor.normalized()
+	var tangent := radial.orthogonal()
+	var blended := (radial + tangent * pattern.curve_bias).normalized()
+	return [blended, _falloff(anchor, world_pos) * pattern.field_strength]
 
 func _falloff(reference_point: Vector2, world_pos: Vector2) -> float:
 	var dist := world_pos.distance_to(reference_point)

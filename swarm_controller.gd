@@ -72,3 +72,11 @@ func cast(direction: Vector2, target: Node2D = null) -> void:
 	directive_state = DirectiveState.CASTING
 	for agent in agents:
 		agent.enter_directed(field, pattern.speed_multiplier)
+
+func recall() -> void:
+	directive_state = DirectiveState.ORBIT
+	if active_field != null and is_instance_valid(active_field):
+		active_field.queue_free()
+	active_field = null
+	for agent in agents:
+		agent.return_to_idle()

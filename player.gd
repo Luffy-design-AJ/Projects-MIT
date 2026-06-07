@@ -57,6 +57,7 @@ func _physics_process(delta: float) -> void:
 
 		is_eminating = true
 		eminate_timer = 1
+		swarm_controller.recall()
 	if Input.is_action_just_pressed("Attack"):
 		is_attacking = true
 		attack_timer = 0.5

@@ -26,6 +26,7 @@ var current_animation = ""
 
 @onready var animated_sprite = $AnimatedSprite2D
 @onready var swarm_controller = $SwarmController
+@onready var melee_hitbox: Area2D = $MeleeHitbox
 
 
 
@@ -61,6 +62,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("Attack"):
 		is_attacking = true
 		attack_timer = 0.5
+		_perform_melee_strike()
 
 	# CAST TIMER
 	if is_casting:
@@ -172,3 +174,11 @@ func _physics_process(delta: float) -> void:
 
 
 	move_and_slide()
+
+
+const MELEE_DAMAGE := 18.0
+
+func _perform_melee_strike() -> void:
+	for area in melee_hitbox.get_overlapping_areas():
+		if area.is_in_group("swarm_targets") and area.has_method("take_damage"):
+			area.take_damage(MELEE_DAMAGE)

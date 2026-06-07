@@ -1,0 +1,29 @@
+[gd_scene load_steps=2 format=3 uid="uid://8tslk3d7m3yc"]
+
+[ext_resource type="PackedScene" uid="uid://cfo7tbrduj4h1" path="res://scenes/Player.tscn" id="1_3cjk8"]
+
+[node name="Game" type="Node2D"]
+
+[node name="Player" parent="." instance=ExtResource("1_3cjk8")]
+position = Vector2(-2, -7)
+
+[node name="Camera2D" type="Camera2D" parent="Player"]
+position = Vector2(1, 6)
+zoom = Vector2(8, 8)
+position_smoothing_speed = 4.0
+drag_horizontal_enabled = true
+drag_vertical_enabled = true
+drag_left_margin = 0.9
+drag_top_margin = 0.9
+drag_right_margin = 0.9
+drag_bottom_margin = 0.9
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="Label" type="Label" parent="CanvasLayer"]
+offset_left = -72.0
+offset_top = -41.0
+offset_right = 89.0
+offset_bottom = -18.0
+theme_override_font_sizes/font_size = 4
+text = "Current Cast: Scatter"

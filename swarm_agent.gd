@@ -79,8 +79,14 @@ func _separation_steering() -> Vector2:
 			push += offset.normalized() * (SEPARATION_RADIUS - dist) / SEPARATION_RADIUS
 	return push * SEPARATION_FORCE
 
-func _resolve_combat(_delta: float) -> void:
-	pass  # filled in by Task 6
+func _resolve_combat(delta: float) -> void:
+	for area in get_overlapping_areas():
+		if area.is_in_group("swarm_targets") and area.has_method("take_damage"):
+			area.take_damage(DOT_PER_SECOND * delta)
+
+func take_counter_damage(amount: float) -> void:
+	if swarm_controller != null:
+		swarm_controller.deplete_strength(amount)
 
 func return_to_idle() -> void:
 	state = State.IDLE

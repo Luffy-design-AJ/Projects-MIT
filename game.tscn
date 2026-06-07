@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://8tslk3d7m3yc"]
+[gd_scene load_steps=3 format=3 uid="uid://8tslk3d7m3yc"]
 
 [ext_resource type="PackedScene" uid="uid://cfo7tbrduj4h1" path="res://scenes/Player.tscn" id="1_3cjk8"]
+[ext_resource type="PackedScene" path="res://placeholder_enemy.tscn" id="2_enemy"]
 
 [node name="Game" type="Node2D"]
 
@@ -17,6 +18,9 @@ drag_left_margin = 0.9
 drag_top_margin = 0.9
 drag_right_margin = 0.9
 drag_bottom_margin = 0.9
+
+[node name="PlaceholderEnemy" parent="." instance=ExtResource("2_enemy")]
+position = Vector2(200, 0)
 
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 

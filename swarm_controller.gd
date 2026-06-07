@@ -7,6 +7,7 @@ const AGENT_BASE_ORBIT_RADIUS := 40.0
 const STRENGTH_REGEN_PER_SECOND := 4.0
 const STRENGTH_CAP_BASE := 100.0
 const STRENGTH_CAP_PER_LEVEL := 20.0
+const TARGET_SEARCH_RADIUS := 320.0
 
 signal strength_changed(current: float, cap: float)
 
@@ -74,6 +75,23 @@ func cast(direction: Vector2, target: Node2D = null) -> void:
 	directive_state = DirectiveState.CASTING
 	for agent in agents:
 		agent.enter_directed(field, pattern.speed_multiplier)
+
+func find_nearest_target(from_position: Vector2, preferred_direction: Vector2 = Vector2.ZERO, max_angle: float = TAU) -> Node2D:
+	var best: Node2D = null
+	var best_dist := INF
+	for target in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(target):
+			continue
+		var to_target: Vector2 = target.global_position - from_position
+		var dist := to_target.length()
+		if dist > TARGET_SEARCH_RADIUS or dist >= best_dist:
+			continue
+		if preferred_direction != Vector2.ZERO:
+			if absf(preferred_direction.angle_to(to_target.normalized())) > max_angle:
+				continue
+		best = target
+		best_dist = dist
+	return best
 
 func recall() -> void:
 	directive_state = DirectiveState.ORBIT

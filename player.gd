@@ -11,6 +11,9 @@ var dash_timer = 0.0
 var dash_direction = Vector2.RIGHT
 var last_direction = Vector2.RIGHT
 
+enum AimMode { DIRECTIONAL, MOUSE, LOCK_ON }
+var aim_mode: int = AimMode.DIRECTIONAL
+
 var is_casting = false
 var cast_timer = 0
 var is_eminating = false
@@ -52,7 +55,8 @@ func _physics_process(delta: float) -> void:
 		is_casting = true
 		cast_timer = CAST_DURATION
 
-		swarm_controller.cast(last_direction)
+		var aim := _resolve_cast_aim()
+		swarm_controller.cast(aim[0], aim[1])
 
 
 	if Input.is_action_just_pressed("eminate"):
@@ -60,6 +64,10 @@ func _physics_process(delta: float) -> void:
 		is_eminating = true
 		eminate_timer = 1
 		swarm_controller.recall()
+
+	if Input.is_action_just_pressed("toggle_aim_mode"):
+		aim_mode = (aim_mode + 1) % 3
+		print("Aim mode: ", AimMode.keys()[aim_mode])
 	if Input.is_action_just_pressed("Attack"):
 		is_attacking = true
 		attack_timer = 0.5
@@ -176,6 +184,23 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 
+
+## Returns [direction: Vector2, target: Node2D (or null)] for the active aim mode.
+func _resolve_cast_aim() -> Array:
+	match aim_mode:
+		AimMode.MOUSE:
+			var to_cursor := get_global_mouse_position() - global_position
+			if to_cursor.length() < 0.001:
+				return [last_direction, null]
+			var direction := to_cursor.normalized()
+			return [direction, swarm_controller.find_nearest_target(global_position, direction, 0.5)]
+		AimMode.LOCK_ON:
+			var target := swarm_controller.find_nearest_target(global_position)
+			if target != null:
+				return [(target.global_position - global_position).normalized(), target]
+			return [last_direction, null]
+		_:
+			return [last_direction, swarm_controller.find_nearest_target(global_position, last_direction, 0.5)]
 
 func _perform_melee_strike() -> void:
 	for area in melee_hitbox.get_overlapping_areas():

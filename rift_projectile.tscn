@@ -1,0 +1,65 @@
+[gd_scene load_steps=11 format=3 uid="uid://cyxd8eumsnxk7"]
+
+[ext_resource type="Script" path="res://scenes/rift_projectile.gd" id="1_gmnbb"]
+[ext_resource type="Texture2D" uid="uid://c8ufgld1fvwqv" path="res://assets/Screenshot 2026-05-26 at 8.15.17 PM-Photoroom.png" id="1_u2qkg"]
+[ext_resource type="PackedScene" uid="uid://8tslk3d7m3yc" path="res://scenes/game.tscn" id="3_pxsur"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_x85db"]
+atlas = ExtResource("1_u2qkg")
+region = Rect2(0, 0, 140, 122)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_0sl21"]
+atlas = ExtResource("1_u2qkg")
+region = Rect2(194, 0, 172, 121)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_aaed0"]
+atlas = ExtResource("1_u2qkg")
+region = Rect2(425, 0, 178, 122)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_h0iq3"]
+atlas = ExtResource("1_u2qkg")
+region = Rect2(654, 0, 195, 122)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_cvv4c"]
+atlas = ExtResource("1_u2qkg")
+region = Rect2(923, 0, 122, 122)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_x6lp8"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_x85db")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_0sl21")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_aaed0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_h0iq3")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_cvv4c")
+}],
+"loop": false,
+"name": &"rift",
+"speed": 5.0
+}]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_7cqoe"]
+radius = 10.0499
+
+[node name="RiftProjectile" type="Area2D"]
+script = ExtResource("1_gmnbb")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(-10, 0)
+scale = Vector2(0.5, 0.5)
+sprite_frames = SubResource("SpriteFrames_x6lp8")
+animation = &"rift"
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_7cqoe")
+
+[node name="Game" parent="." instance=ExtResource("3_pxsur")]

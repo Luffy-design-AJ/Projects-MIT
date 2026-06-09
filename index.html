@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Node Zero: Hive Remembers</title>
+    <link rel="stylesheet" href="styles.css?v=antgrid2" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="stage" aria-label="Node Zero playable vertical slice">
+        <canvas id="game" width="1280" height="720"></canvas>
+
+        <div class="topbar">
+          <div>
+            <p class="kicker">NODE ZERO</p>
+            <h1>Hive Remembers</h1>
+          </div>
+          <div class="readouts">
+            <span id="phasePill">Calm</span>
+            <span id="runPill">Run 1</span>
+            <span id="memoryPill">Memory 0</span>
+          </div>
+        </div>
+
+        <div class="left-hud">
+          <div class="level-list" id="levelList"></div>
+          <div class="meter">
+            <div class="meter-label"><span>Node Integrity</span><b id="hpText">100</b></div>
+            <div class="meter-track"><i id="hpBar"></i></div>
+          </div>
+          <div class="meter">
+            <div class="meter-label"><span>Hive Density</span><b id="swarmText">160</b></div>
+            <div class="meter-track"><i id="swarmBar"></i></div>
+          </div>
+          <div class="meter">
+            <div class="meter-label"><span>Resonance</span><b id="resText">Ready</b></div>
+            <div class="meter-track"><i id="resBar"></i></div>
+          </div>
+          <div class="signals" id="signals"></div>
+          <div class="legend panel">
+            <p class="panel-title">Chemical Fields</p>
+            <span><i style="background:#d5a343"></i>Lead A</span>
+            <span><i style="background:#ff6b4a"></i>Hunt</span>
+            <span><i style="background:#7aa7ff"></i>Scatter</span>
+            <span><i style="background:#b993ff"></i>Echo</span>
+            <span><i style="background:#6ee7c8"></i>Foot trail</span>
+          </div>
+        </div>
+
+        <div class="right-hud">
+          <div class="portrait">
+            <img src="assets/coordination-node.png" alt="" />
+          </div>
+          <div class="panel">
+            <p class="panel-title">Hive Interpretation</p>
+            <p id="interpretation">Move to shape the swarm. It will not obey perfectly.</p>
+          </div>
+          <div class="panel compact">
+            <p class="panel-title">Adaptive Hostility</p>
+            <p id="adaptation">The containment system has no pattern yet.</p>
+          </div>
+          <div class="dev-panel panel">
+            <p class="panel-title">Dev Panel</p>
+            <label>Ants <input id="devAnts" type="range" min="40" max="260" value="150" /></label>
+            <label>Explore <input id="devExplore" type="range" min="0" max="30" value="8" /></label>
+            <label>Noise <input id="devNoise" type="range" min="0" max="30" value="7" /></label>
+            <label>Stamp <input id="devStamp" type="range" min="5" max="90" value="34" /></label>
+            <label>Saturation <input id="devSat" type="range" min="30" max="220" value="100" /></label>
+            <label>Foot Diffusion <input id="devFootDiff" type="range" min="0" max="25" value="5" /></label>
+            <button id="resetMemory" class="small-button">Reset Adaptive Memory</button>
+          </div>
+        </div>
+
+        <div class="bottom-hud">
+          <span>WASD move</span>
+          <span>Space dash</span>
+          <span>Mouse cast Lead A</span>
+          <span>Shift recall</span>
+          <span>Q Hunt</span>
+          <span>E Scatter</span>
+          <span>R Echo</span>
+          <span>F Consume</span>
+          <span>V Veil</span>
+          <span>Tab evolve stance</span>
+        </div>
+
+        <div class="choice-screen hidden" id="choiceScreen">
+          <div class="choice-card">
+            <p class="kicker">DEATH IS DATA TRANSFER</p>
+            <h2 id="choiceTitle">Hive Mutation</h2>
+            <p id="choiceBody">The node collapses. The hive keeps what mattered.</p>
+            <div class="choice-grid" id="choiceGrid"></div>
+          </div>
+        </div>
+
+        <div class="toast" id="toast">The hive is listening.</div>
+      </section>
+    </main>
+    <script src="src/game.js?v=antgrid2"></script>
+  </body>
+</html>

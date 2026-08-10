@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://d3jj6c6h0lhml"
-path="res://.godot/imported/3R.png-fdcdbd4072972e15d9f817cc4a79d0f0.ctex"
+path="res://.godot/imported/3R.png-0166e9bd4027635ed6057b6130ecf916.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/Dash/3R.png"
-dest_files=["res://.godot/imported/3R.png-fdcdbd4072972e15d9f817cc4a79d0f0.ctex"]
+source_file="res://3R.png"
+dest_files=["res://.godot/imported/3R.png-0166e9bd4027635ed6057b6130ecf916.ctex"]
 
 [params]
 

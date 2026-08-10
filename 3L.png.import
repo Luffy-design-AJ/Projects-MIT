@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bow5qtel85u2c"
-path="res://.godot/imported/3L.png-58baa3a8cd9aeada9434a020f2770fd4.ctex"
+path="res://.godot/imported/3L.png-04e86cd8c0314e3d9c7f47ee2d45edd6.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/Dash/3L.png"
-dest_files=["res://.godot/imported/3L.png-58baa3a8cd9aeada9434a020f2770fd4.ctex"]
+source_file="res://3L.png"
+dest_files=["res://.godot/imported/3L.png-04e86cd8c0314e3d9c7f47ee2d45edd6.ctex"]
 
 [params]
 

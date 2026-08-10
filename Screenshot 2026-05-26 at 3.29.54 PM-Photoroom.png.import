@@ -3,15 +3,15 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://6f1ytjtmej41"
-path="res://.godot/imported/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png-c3924ab0f0ec2b3614121f5191584a5a.ctex"
+path="res://.godot/imported/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png-c5cabd092fc5ed79639d1d0636d84867.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png"
-dest_files=["res://.godot/imported/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png-c3924ab0f0ec2b3614121f5191584a5a.ctex"]
+source_file="res://Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png"
+dest_files=["res://.godot/imported/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png-c5cabd092fc5ed79639d1d0636d84867.ctex"]
 
 [params]
 

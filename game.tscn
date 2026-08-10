@@ -1,8 +1,10 @@
-[gd_scene load_steps=4 format=3 uid="uid://8tslk3d7m3yc"]
+[gd_scene load_steps=6 format=3 uid="uid://8tslk3d7m3yc"]
 
-[ext_resource type="PackedScene" uid="uid://cfo7tbrduj4h1" path="res://scenes/Player.tscn" id="1_3cjk8"]
-[ext_resource type="PackedScene" path="res://placeholder_enemy.tscn" id="2_enemy"]
-[ext_resource type="Script" path="res://game.gd" id="3_gamesc"]
+[ext_resource type="PackedScene" uid="uid://cfo7tbrduj4h1" path="res://Player.tscn" id="1_3cjk8"]
+[ext_resource type="PackedScene" uid="uid://bdwdglmoc40r6" path="res://placeholder_enemy.tscn" id="2_enemy"]
+[ext_resource type="Script" path="res://scripts/game.gd" id="3_gamesc"]
+[ext_resource type="Script" path="res://scripts/swarm_world.gd" id="4_swarm"]
+[ext_resource type="Script" path="res://scripts/food_source.gd" id="5_food"]
 
 [node name="Game" type="Node2D"]
 script = ExtResource("3_gamesc")
@@ -21,23 +23,67 @@ drag_top_margin = 0.9
 drag_right_margin = 0.9
 drag_bottom_margin = 0.9
 
-[node name="PlaceholderEnemy" parent="." instance=ExtResource("2_enemy")]
-position = Vector2(200, 0)
+[node name="CanvasLayer" type="CanvasLayer" parent="Player/Camera2D"]
+visible = false
 
-[node name="CanvasLayer" type="CanvasLayer" parent="."]
-
-[node name="Label" type="Label" parent="CanvasLayer"]
+[node name="Label" type="Label" parent="Player/Camera2D/CanvasLayer"]
 offset_left = -72.0
 offset_top = -41.0
 offset_right = 89.0
 offset_bottom = -18.0
 theme_override_font_sizes/font_size = 4
-text = "Current Cast: Scatter"
+text = "Ants: 0"
 
-[node name="StrengthLabel" type="Label" parent="CanvasLayer"]
+[node name="StrengthLabel" type="Label" parent="Player/Camera2D/CanvasLayer"]
 offset_left = -72.0
 offset_top = -16.0
 offset_right = 89.0
 offset_bottom = 4.0
 theme_override_font_sizes/font_size = 4
-text = "Strength: 100 / 100"
+text = "Deliveries: 0"
+
+[node name="EminateModeLabel" type="Label" parent="Player/Camera2D/CanvasLayer"]
+offset_left = 37.0
+offset_top = -41.0
+offset_right = 198.0
+offset_bottom = -21.0
+theme_override_font_sizes/font_size = 4
+text = "Eminate: attract"
+
+[node name="CastLabel" type="Label" parent="Player/Camera2D/CanvasLayer"]
+offset_left = 29.0
+offset_top = -32.0
+offset_right = 190.0
+offset_bottom = -12.0
+theme_override_font_sizes/font_size = 4
+text = "Cast: Direct Hunt (V)"
+
+[node name="SwarmWorld" type="Node2D" parent="."]
+visible = false
+script = ExtResource("4_swarm")
+
+[node name="FoodA" type="Node2D" parent="SwarmWorld"]
+position = Vector2(480, -280)
+script = ExtResource("5_food")
+
+[node name="FoodB" type="Node2D" parent="SwarmWorld"]
+position = Vector2(-460, 240)
+script = ExtResource("5_food")
+
+[node name="FoodC" type="Node2D" parent="SwarmWorld"]
+position = Vector2(360, 260)
+script = ExtResource("5_food")
+
+[node name="PlaceholderEnemy" parent="." instance=ExtResource("2_enemy")]
+position = Vector2(200, 0)
+
+[node name="PlaceholderEnemy2" parent="." instance=ExtResource("2_enemy")]
+position = Vector2(200, 0)
+
+[node name="PlaceholderEnemy3" parent="." instance=ExtResource("2_enemy")]
+position = Vector2(200, 0)
+
+[node name="PlaceholderEnemy4" parent="." instance=ExtResource("2_enemy")]
+position = Vector2(200, 0)
+
+[editable path="Player"]

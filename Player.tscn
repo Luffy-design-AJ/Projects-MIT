@@ -1,19 +1,17 @@
-[gd_scene load_steps=103 format=3 uid="uid://cfo7tbrduj4h1"]
+[gd_scene load_steps=100 format=3 uid="uid://cfo7tbrduj4h1"]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_6yk8y"]
-[ext_resource type="Script" path="res://swarm_controller.gd" id="2_swarmctl"]
-[ext_resource type="Texture2D" uid="uid://twlsh7w874d6" path="res://assets/NightBorne.png" id="1_c0vhu"]
-[ext_resource type="Texture2D" uid="uid://bn7ewguewmwgd" path="res://assets/Screenshot 2026-05-26 at 3.30.14 PM-Photoroom.png" id="3_qemxg"]
-[ext_resource type="Texture2D" uid="uid://5681o61q2hsd" path="res://assets/Dash/1L.png" id="3_y6kcm"]
-[ext_resource type="Texture2D" uid="uid://ohgysymw023x" path="res://assets/Dash/2L.png" id="4_1swbr"]
-[ext_resource type="Texture2D" uid="uid://bow5qtel85u2c" path="res://assets/Dash/3L.png" id="5_kw4ww"]
-[ext_resource type="Texture2D" uid="uid://krh4flscle06" path="res://assets/Dash/4L.png" id="6_2fke2"]
-[ext_resource type="Texture2D" uid="uid://cp1lg33xer7gw" path="res://assets/Dash/1R.png" id="7_kryd2"]
-[ext_resource type="Texture2D" uid="uid://blo44iykkqwsq" path="res://assets/Screenshot 2026-05-26 at 3.30.32 PM-Photoroom.png" id="8_lssko"]
-[ext_resource type="Texture2D" uid="uid://dx4txk0gf1iix" path="res://assets/Dash/2R.png" id="8_o5pqd"]
-[ext_resource type="Texture2D" uid="uid://6f1ytjtmej41" path="res://assets/Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png" id="9_6fkyy"]
-[ext_resource type="Texture2D" uid="uid://d3jj6c6h0lhml" path="res://assets/Dash/3R.png" id="9_xy4hh"]
-[ext_resource type="Texture2D" uid="uid://bq02m6uotkp2u" path="res://assets/Dash/4R.png" id="10_yfiyv"]
+[ext_resource type="Texture2D" uid="uid://twlsh7w874d6" path="res://NightBorne.png" id="1_c0vhu"]
+[ext_resource type="Texture2D" uid="uid://5681o61q2hsd" path="res://assets/1L.png" id="3_y6kcm"]
+[ext_resource type="Texture2D" uid="uid://ohgysymw023x" path="res://assets/2L.png" id="4_1swbr"]
+[ext_resource type="Texture2D" uid="uid://bow5qtel85u2c" path="res://3L.png" id="5_kw4ww"]
+[ext_resource type="Texture2D" uid="uid://krh4flscle06" path="res://4L.png" id="6_2fke2"]
+[ext_resource type="Texture2D" uid="uid://cp1lg33xer7gw" path="res://assets/1R.png" id="7_kryd2"]
+[ext_resource type="Texture2D" uid="uid://dx4txk0gf1iix" path="res://assets/2R.png" id="8_o5pqd"]
+[ext_resource type="Texture2D" uid="uid://6f1ytjtmej41" path="res://Screenshot 2026-05-26 at 3.29.54 PM-Photoroom.png" id="9_6fkyy"]
+[ext_resource type="Texture2D" uid="uid://d3jj6c6h0lhml" path="res://3R.png" id="9_xy4hh"]
+[ext_resource type="Texture2D" uid="uid://bq02m6uotkp2u" path="res://4R.png" id="10_yfiyv"]
+[ext_resource type="Texture2D" uid="uid://ch1ss0rku04a6" path="res://Screenshot 2026-05-26 at 3.30.14 PM-Photoroom.png" id="11_ps30m"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_6mthn"]
 atlas = ExtResource("1_c0vhu")
@@ -223,24 +221,20 @@ region = Rect2(1680, 320, 80, 80)
 atlas = ExtResource("1_c0vhu")
 region = Rect2(1760, 320, 80, 80)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_ovmbs"]
-atlas = ExtResource("3_qemxg")
-region = Rect2(0, 0, 39, 40)
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_nlmup"]
-atlas = ExtResource("3_qemxg")
+[sub_resource type="AtlasTexture" id="AtlasTexture_tymgd"]
+atlas = ExtResource("11_ps30m")
 region = Rect2(39, 0, 39, 40)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_vlhod"]
-atlas = ExtResource("3_qemxg")
+[sub_resource type="AtlasTexture" id="AtlasTexture_edara"]
+atlas = ExtResource("11_ps30m")
 region = Rect2(78, 0, 39, 40)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_k232v"]
-atlas = ExtResource("3_qemxg")
+[sub_resource type="AtlasTexture" id="AtlasTexture_7io6d"]
+atlas = ExtResource("11_ps30m")
 region = Rect2(117, 0, 39, 40)
 
-[sub_resource type="AtlasTexture" id="AtlasTexture_uefyx"]
-atlas = ExtResource("3_qemxg")
+[sub_resource type="AtlasTexture" id="AtlasTexture_hsakp"]
+atlas = ExtResource("11_ps30m")
 region = Rect2(156, 0, 39, 40)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_go1ew"]
@@ -324,19 +318,19 @@ atlas = ExtResource("1_c0vhu")
 region = Rect2(400, 80, 80, 80)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_psi3f"]
-atlas = ExtResource("8_lssko")
+atlas = ExtResource("9_6fkyy")
 region = Rect2(0, 0, 26, 39)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_g3end"]
-atlas = ExtResource("8_lssko")
+atlas = ExtResource("9_6fkyy")
 region = Rect2(26, 0, 26, 39)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_k5nlc"]
-atlas = ExtResource("8_lssko")
+atlas = ExtResource("9_6fkyy")
 region = Rect2(52, 0, 26, 39)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_wvuh8"]
-atlas = ExtResource("8_lssko")
+atlas = ExtResource("9_6fkyy")
 region = Rect2(78, 0, 26, 39)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_2te51"]
@@ -540,19 +534,16 @@ animations = [{
 }, {
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_ovmbs")
+"texture": SubResource("AtlasTexture_tymgd")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_nlmup")
+"texture": SubResource("AtlasTexture_edara")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_vlhod")
+"texture": SubResource("AtlasTexture_7io6d")
 }, {
 "duration": 1.0,
-"texture": SubResource("AtlasTexture_k232v")
-}, {
-"duration": 1.0,
-"texture": SubResource("AtlasTexture_uefyx")
+"texture": SubResource("AtlasTexture_hsakp")
 }],
 "loop": true,
 "name": &"Eminate",
@@ -676,25 +667,20 @@ height = 28.0
 radius = 28.0
 
 [node name="Player" type="CharacterBody2D"]
+collision_layer = 3
 script = ExtResource("1_6yk8y")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 sprite_frames = SubResource("SpriteFrames_ovupd")
-animation = &"Attack"
+animation = &"Eminate"
 autoplay = "Rest"
-frame = 6
-frame_progress = 0.680082
+frame_progress = 0.220866
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 position = Vector2(2, 12)
 shape = SubResource("CapsuleShape2D_aqfpo")
 
-[node name="SwarmController" type="Node2D" parent="."]
-script = ExtResource("2_swarmctl")
-player = NodePath("..")
-
 [node name="MeleeHitbox" type="Area2D" parent="."]
-position = Vector2(0, 0)
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="MeleeHitbox"]
 shape = SubResource("CircleShape2D_melee01")

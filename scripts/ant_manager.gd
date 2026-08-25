@@ -33,3 +33,10 @@ func step(dt: float) -> void:
 			if is_instance_valid(agent):
 				agent.update_step()
 		_step_accumulator -= world.step_rate
+	agents = agents.filter(func(a): return is_instance_valid(a))
+
+
+## Called by an ant right before it frees itself. Keeps `agents` (and the HUD
+## ant count) live so dead ants don't linger in the simulation.
+func remove_agent(agent: Node) -> void:
+	agents.erase(agent)

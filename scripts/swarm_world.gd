@@ -36,8 +36,18 @@ signal deliveries_changed(count: int)
 @export var cast_effect_seconds: float = 3.0
 @export var nest_suppress_seconds: float = 2.0
 @export var loop_radius_cells: int = 9
+## Loop Hunt runs in two phases: the swarm marches out along the aim for
+## `loop_out_seconds`, then the lane is weakened and a hot arc + return lane
+## pull them back around to the player.
+@export var loop_out_seconds: float = 1.5
 @export var bounce_side_cells: int = 6
 @export var bounce_waypoint_count: int = 4
+
+@export_group("Bomb")
+@export var bomb_radius_cells: int = 20
+@export var bomb_strength: float = 2.0
+@export var bomb_attract_duration: float = 5.0
+@export var bomb_nest_suppress_seconds: float = 5.0
 
 @export_group("Behaviour (JS-faithful defaults)")
 @export var params_noise: float = 0.05
@@ -76,7 +86,9 @@ var _sticky_timer: float = 0.0
 var _vis_timer: float = 0.0
 var _vis_layers: Array = []
 var _active_cast: Dictionary = {}
+var _active_bomb: Dictionary = {}
 var _nest_suppress_timer: float = 0.0
+var nest_emit_enabled: bool = true
 
 const VIS_REFRESH_INTERVAL: float = 0.1
 
@@ -108,6 +120,13 @@ func set_nest_carrier(node: Node2D) -> void:
 	nest_carrier = node
 
 
+## Turn the persistent nest (home) pheromone emission on or off. Casts can
+## still temporarily suppress it via `_nest_suppress_timer`; this is the
+## all-time master switch (N key).
+func set_nest_emit_enabled(enabled: bool) -> void:
+	nest_emit_enabled = enabled
+
+
 func _physics_process(delta: float) -> void:
 	var home_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HOME_PHER)
 	var move_strength := 0.0
@@ -124,7 +143,7 @@ func _physics_process(delta: float) -> void:
 	var radius := maxi(nest_radius_cells, carrier_aura_radius_cells) if move_strength > 0.0 else nest_radius_cells + 1
 	if _nest_suppress_timer > 0.0:
 		_nest_suppress_timer = maxf(0.0, _nest_suppress_timer - delta)
-	else:
+	elif nest_emit_enabled:
 		home_field.stamp(nest_cell.x, nest_cell.y, radius, emit * delta, params_sat_cap)
 	if move_strength > 0.0:
 		home_field.boost_decay(delta, stale_decay_boost * move_strength)
@@ -138,12 +157,26 @@ func _physics_process(delta: float) -> void:
 			_active_cast = {}
 		else:
 			_active_cast["timer"] = timer
+			_active_cast["elapsed"] = float(_active_cast["elapsed"]) + delta
 			_apply_cast(
 				_active_cast["world_pos"],
 				_active_cast["aim_dir"],
 				_active_cast["pattern"],
-				_active_cast["target"]
+				_active_cast["target"],
+				_active_cast["elapsed"]
 			)
+
+	if not _active_bomb.is_empty():
+		var timer: float = _active_bomb["timer"] - delta
+		if timer <= 0.0:
+			_active_bomb = {}
+		else:
+			_active_bomb["timer"] = timer
+			var cell: Vector2i = _active_bomb["cell"]
+			var mode: int = _active_bomb["mode"]
+			var sign: float = 1.0 if mode == 0 else -1.0
+			var hunt_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+			hunt_field.set_stamp_falloff(cell.x, cell.y, bomb_radius_cells, sign)
 
 	if show_pheromone_vis:
 		_vis_timer -= delta
@@ -167,6 +200,34 @@ func eminate_at(world_pos: Vector2, mode: int) -> void:
 	hunt_field.stamp(cell.x, cell.y, eminate_radius_cells, strength, params_sat_cap)
 
 
+## Enemy effect seam: enemy → shared scalar field → swarm response. A negative
+## `strength` lays a repulsive fear gradient (strongest at the centre, fading
+## to zero at the rim) that ants climb out of; positive attracts. The enemy
+## never commands an ant directly, mirroring the player's pheromone pipeline.
+func stamp_enemy_field(world_pos: Vector2, radius_cells: int, strength: float) -> void:
+	var cell := _clamp_cell(world_to_cell(world_pos))
+	var hunt_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+	hunt_field.set_stamp_falloff(cell.x, cell.y, radius_cells, strength)
+
+
+## Bomb drop: stamps a saturating burst of hunt pheromone around the impact
+## point and re-stamps it every frame for `bomb_attract_duration` seconds so
+## ants have time to converge. ATTRACT pulls ants in; SCATTER pushes them out.
+## Also suppresses nest emission temporarily.
+func drop_bomb(world_pos: Vector2, mode: int = 0) -> void:
+	var cell := _clamp_cell(world_to_cell(world_pos))
+	var hunt_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+	var strength: float = bomb_strength if mode == 0 else -bomb_strength
+	hunt_field.stamp(cell.x, cell.y, bomb_radius_cells, strength, params_sat_cap)
+	_active_bomb = {
+		"world_pos": world_pos,
+		"cell": cell,
+		"timer": bomb_attract_duration,
+		"mode": mode,
+	}
+	_nest_suppress_timer = bomb_nest_suppress_seconds
+
+
 ## Cast the active hunt pattern by stamping the shared hunt field, then
 ## re-stamping it every frame for `cast_effect_seconds` so the structure stays
 ## strong enough for ants to follow. Player → scalar field → ant; never a
@@ -179,12 +240,13 @@ func cast_hunt(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: No
 		"aim_dir": aim_dir,
 		"target": target,
 		"timer": cast_effect_seconds,
+		"elapsed": 0.0,
 	}
 	_nest_suppress_timer = nest_suppress_seconds
-	_apply_cast(world_pos, aim_dir, pattern, target)
+	_apply_cast(world_pos, aim_dir, pattern, target, 0.0)
 
 
-func _apply_cast(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: Node2D = null) -> void:
+func _apply_cast(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: Node2D = null, elapsed: float = 0.0) -> void:
 	var start := _clamp_cell(world_to_cell(world_pos))
 	var dir_n := aim_dir.normalized()
 	if dir_n == Vector2.ZERO:
@@ -193,7 +255,7 @@ func _apply_cast(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: 
 		"direct":
 			_stamp_direct_hunt(start, dir_n)
 		"loop":
-			_stamp_loop_hunt(start, dir_n, target)
+			_stamp_loop_hunt(start, dir_n, target, elapsed)
 		"multi":
 			_stamp_multi_hunt(start, dir_n)
 		"bounce":
@@ -260,15 +322,61 @@ func _stamp_direct_hunt(start: Vector2i, dir_n: Vector2) -> void:
 	_hunt_set_disc(end, 4, peak * 1.3)
 
 
-## Ring of hunt pheromone around the anchor; ants follow the ring and orbit it.
-func _stamp_loop_hunt(start: Vector2i, dir_n: Vector2, target: Node2D) -> void:
-	var anchor := _anchor_cell(start, dir_n, target)
-	_hunt_stamp(start, 3, cast_strength)
-	for i in range(24):
-		var a := TAU * float(i) / 24.0
-		var c := _clamp_cell(anchor + Vector2i(round(cos(a) * loop_radius_cells), round(sin(a) * loop_radius_cells)))
-		_hunt_stamp(c, 2, cast_strength)
-	_hunt_stamp(anchor, 2, cast_strength * 0.8)
+## Loop Hunt: two-phase out-and-back along the aim. For the first
+## `loop_out_seconds` the swarm marches out along a rising lane from the player
+## to the cast-field edge; afterwards the lane is weakened and a hot far arc
+## plus return lane (rising toward the player) pull the swarm back around to
+## the nest, so they cycle out-and-back while the cast effect lasts.
+func _stamp_loop_hunt(start: Vector2i, dir_n: Vector2, _target: Node2D, elapsed: float) -> void:
+	var far := _clamp_cell(start + Vector2i(round(dir_n.x * cast_reach_cells), round(dir_n.y * cast_reach_cells)))
+	var perp := Vector2(dir_n.y, -dir_n.x)
+	if elapsed < loop_out_seconds:
+		_stamp_loop_outbound(start, far, dir_n, perp)
+	else:
+		_stamp_loop_return(start, far, dir_n, perp)
+
+
+## Rising lane from the player to the cast-field edge: a few parallel tracks
+## so the swarm spreads out, all climbing toward the far end so ants march out.
+func _stamp_loop_outbound(start: Vector2i, far: Vector2i, dir_n: Vector2, perp: Vector2) -> void:
+	var base: float = cast_strength * 0.4
+	var peak: float = cast_strength
+	_hunt_set_disc(start, 3, base)
+	for k in range(-2, 3):
+		var off := perp * float(k)
+		var a := _clamp_cell(start + Vector2i(round(off.x), round(off.y)))
+		var b := _clamp_cell(far + Vector2i(round(off.x), round(off.y)))
+		_hunt_set_line(a, b, 1, base, peak)
+
+
+## Phase two: weaken the outbound lane so it stops pulling, then lay a hot
+## turnaround arc at the far edge and a return lane that climbs back toward
+## the player, carrying the swarm home. The whole return path is hotter than
+## the weakened lane so any ant in reach gets captured and routed back.
+func _stamp_loop_return(start: Vector2i, far: Vector2i, dir_n: Vector2, perp: Vector2) -> void:
+	var half := float(loop_radius_cells)
+	var weak: float = cast_strength * 0.3
+	var arc_v0: float = cast_strength * 0.8
+	var arc_v1: float = cast_strength * 1.3
+	var ret_v1: float = cast_strength * 1.6
+
+	for k in range(-2, 3):
+		var off := perp * float(k)
+		var a := _clamp_cell(start + Vector2i(round(off.x), round(off.y)))
+		var b := _clamp_cell(far + Vector2i(round(off.x), round(off.y)))
+		_hunt_set_line(a, b, 1, weak, weak)
+
+	var prev := _clamp_cell(far + Vector2i(round(-perp.x * half), round(-perp.y * half)))
+	var arc_pts := 10
+	for i in range(1, arc_pts + 1):
+		var ang := -PI * 0.5 + PI * float(i) / float(arc_pts)
+		var off := dir_n * cos(ang) * half + perp * sin(ang) * half
+		var c := _clamp_cell(far + Vector2i(round(off.x), round(off.y)))
+		_hunt_set_line(prev, c, 2, arc_v0, arc_v1)
+		prev = c
+
+	var far_ret := _clamp_cell(far + Vector2i(round(perp.x * half), round(perp.y * half)))
+	_hunt_set_line(far_ret, start, 2, arc_v1, ret_v1)
 
 
 ## A hunt burst on every enemy target plus a scent line toward each, so the

@@ -6,6 +6,8 @@ const DASH_SPEED = 900.0
 const DASH_DURATION = 0.099
 const CAST_DURATION = 0.84
 const MELEE_DAMAGE := 18.0
+const MAX_HP := 100.0
+const INVULN_DURATION := 0.6
 
 var is_dashing = false
 var dash_timer = 0.0
@@ -18,14 +20,26 @@ var aim_mode: int = AimMode.DIRECTIONAL
 enum EminateMode { ATTRACT, SCATTER }
 var eminate_mode: int = EminateMode.ATTRACT
 
+enum BombMode { ATTRACT, SCATTER }
+var bomb_mode: int = BombMode.ATTRACT
+
 enum HuntPattern { DIRECT, LOOP, MULTI, BOUNCE }
 var hunt_pattern: int = HuntPattern.DIRECT
+var nest_pheromone_enabled: bool = true
 
 var is_casting = false
 var cast_timer = 0
 var is_eminating = false
 var is_attacking = false
 var attack_timer = 0.0
+
+var hp: float = MAX_HP
+var invuln_timer: float = 0.0
+var hit_timer: float = 0.0
+
+var bomb_aiming: bool = false
+var bomb_reticle_pos: Vector2 = Vector2.ZERO
+const BOMB_RETICLE_SPEED: float = 200.0
 
 var swarm_world: Node2D = null
 
@@ -59,6 +73,16 @@ func _physics_process(delta: float) -> void:
 	if direction != Vector2.ZERO:
 		last_direction = direction
 
+	# BOMB INPUT
+	if Input.is_action_just_pressed("drop_bomb"):
+		if not bomb_aiming:
+			bomb_aiming = true
+			bomb_reticle_pos = global_position + last_direction * 40.0
+			velocity = Vector2.ZERO
+			queue_redraw()
+		elif is_instance_valid(swarm_world) and swarm_world.has_method("drop_bomb"):
+			_drop_bomb()
+
 	# CAST INPUT
 	if Input.is_action_just_pressed("cast"):
 
@@ -77,6 +101,10 @@ func _physics_process(delta: float) -> void:
 		eminate_mode = (eminate_mode + 1) % 2
 		print("Eminate mode: ", EminateMode.keys()[eminate_mode])
 
+	if Input.is_action_just_pressed("cycle_bomb_mode"):
+		bomb_mode = (bomb_mode + 1) % 2
+		print("Bomb mode: ", BombMode.keys()[bomb_mode])
+
 	# Eminate emits hunt pheromone while held (attract: ants follow, scatter: ants flee).
 	is_eminating = Input.is_action_pressed("eminate")
 	if is_eminating and swarm_world != null and swarm_world.has_method("eminate_at"):
@@ -85,6 +113,13 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("toggle_aim_mode"):
 		aim_mode = (aim_mode + 1) % 3
 		print("Aim mode: ", AimMode.keys()[aim_mode])
+
+	if Input.is_action_just_pressed("toggle_nest_pheromone"):
+		nest_pheromone_enabled = not nest_pheromone_enabled
+		if swarm_world != null and swarm_world.has_method("set_nest_emit_enabled"):
+			swarm_world.set_nest_emit_enabled(nest_pheromone_enabled)
+		print("Nest pheromone: ", "ON" if nest_pheromone_enabled else "OFF")
+
 	if Input.is_action_just_pressed("Attack"):
 		is_attacking = true
 		attack_timer = 0.5
@@ -104,7 +139,26 @@ func _physics_process(delta: float) -> void:
 
 		if attack_timer <= 0:
 			is_attacking = false
-	
+
+	# HIT TIMER
+	if hit_timer > 0.0:
+		hit_timer -= delta
+
+	# INVULN TIMER
+	if invuln_timer > 0.0:
+		invuln_timer -= delta
+
+	# BOMB AIMING: WASD drives reticle, arrows still move player
+	if bomb_aiming:
+		var reticle_input := Vector2.ZERO
+		reticle_input.x = Input.get_axis("aim_left", "aim_right")
+		reticle_input.y = Input.get_axis("aim_up", "aim_down")
+		if reticle_input.length() > 0.01:
+			bomb_reticle_pos += reticle_input.normalized() * BOMB_RETICLE_SPEED * delta
+		if is_instance_valid(swarm_world):
+			bomb_reticle_pos.x = clampf(bomb_reticle_pos.x, swarm_world.origin.x, swarm_world.origin.x + swarm_world.arena_size.x)
+			bomb_reticle_pos.y = clampf(bomb_reticle_pos.y, swarm_world.origin.y, swarm_world.origin.y + swarm_world.arena_size.y)
+		queue_redraw()
 
 	# DASH LOGIC
 	if is_dashing:
@@ -150,6 +204,8 @@ func _physics_process(delta: float) -> void:
 		new_animation = "Eminate"
 	elif is_attacking:
 		new_animation = "Attack"
+	elif hit_timer > 0.0:
+		new_animation = "Hit"
 	elif is_dashing:
 
 		# DASH RIGHT
@@ -245,6 +301,9 @@ func _nearest_target(from_position: Vector2) -> Node2D:
 func eminate_mode_name() -> String:
 	return EminateMode.keys()[eminate_mode].to_lower()
 
+func bomb_mode_name() -> String:
+	return BombMode.keys()[bomb_mode].to_lower()
+
 func hunt_pattern_name() -> String:
 	match hunt_pattern:
 		HuntPattern.LOOP:
@@ -307,3 +366,68 @@ func _perform_melee_strike() -> void:
 	for area in melee_hitbox.get_overlapping_areas():
 		if area.is_in_group("swarm_targets") and area.has_method("take_damage"):
 			area.take_damage(MELEE_DAMAGE)
+
+
+func _drop_bomb() -> void:
+	swarm_world.drop_bomb(bomb_reticle_pos, bomb_mode)
+	bomb_aiming = false
+	_spawn_bomb_flash(bomb_reticle_pos)
+	queue_redraw()
+	print("Bomb dropped at cell ", swarm_world.world_to_cell(bomb_reticle_pos),
+		" mode=", BombMode.keys()[bomb_mode])
+
+
+func _spawn_bomb_flash(at: Vector2) -> void:
+	var flash := Polygon2D.new()
+	flash.name = "BombFlash"
+	var n_seg := 24
+	var radius := 50.0
+	var pts := PackedVector2Array()
+	for i in range(n_seg + 1):
+		var angle := TAU * float(i) / float(n_seg)
+		pts.append(Vector2(cos(angle), sin(angle)) * radius)
+	flash.polygon = pts
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	flash.material = mat
+	if bomb_mode == BombMode.SCATTER:
+		flash.color = Color(1.0, 0.3, 0.15, 0.6)
+	else:
+		flash.color = Color(1.0, 0.8, 0.2, 0.6)
+	flash.position = at - global_position
+	add_child(flash)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(flash, "scale", Vector2(1.5, 1.5), 0.3).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(flash, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(flash.queue_free)
+
+
+func _draw() -> void:
+	if not bomb_aiming:
+		return
+	var local := bomb_reticle_pos - global_position
+	var ring_r := 40.0
+	if is_instance_valid(swarm_world):
+		ring_r = swarm_world.cell_size * float(swarm_world.bomb_radius_cells) * 0.3
+	var ring_color := Color(1.0, 0.9, 0.3, 0.7) if bomb_mode == BombMode.ATTRACT else Color(1.0, 0.35, 0.2, 0.7)
+	var n_seg := 32
+	var pts := PackedVector2Array()
+	for i in range(n_seg + 1):
+		var angle := TAU * float(i) / float(n_seg)
+		pts.append(local + Vector2(cos(angle), sin(angle)) * ring_r)
+	draw_polyline(pts, ring_color, 2.0)
+	draw_circle(local, 4.0, ring_color)
+
+
+## Enemy → player damage with a short invulnerability window so overlapping
+## contact drains HP in steps instead of instantly. `from` (optional) knocks
+## the player away from the source.
+func take_damage(amount: float, from: Vector2 = Vector2.ZERO) -> void:
+	if invuln_timer > 0.0:
+		return
+	invuln_timer = INVULN_DURATION
+	hit_timer = 0.4
+	hp = maxf(hp - amount, 0.0)
+	if from != Vector2.ZERO:
+		velocity = (global_position - from).normalized() * 140.0

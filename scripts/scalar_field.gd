@@ -79,6 +79,19 @@ func set_stamp(cx: int, cy: int, r: int, v: float) -> void:
 				data[idx(xx, yy)] = v
 
 
+## Set-stamp with radial falloff: exact-set (no accumulation, no cap clamp,
+## signed) with v * (1 - d/(r+1)). Negative v lays a repulsive gradient the
+## swarm can climb out of; positive attracts toward the centre.
+func set_stamp_falloff(cx: int, cy: int, r: int, v: float) -> void:
+	for yy in range(cy - r, cy + r + 1):
+		for xx in range(cx - r, cx + r + 1):
+			if xx < 0 or xx >= cols or yy < 0 or yy >= rows:
+				continue
+			var d := absi(xx - cx) + absi(yy - cy)
+			if d <= r:
+				data[idx(xx, yy)] = v * (1.0 - float(d) / float(r + 1))
+
+
 ## One diffusion + decay step, faithfully mirroring the JS prototype:
 ##  - STYLE_BLOB  (home/hunt): JS `diffuse()` — a cell never drops below 88%
 ##    of its prior value per tick, so lines/blobs persist as sharp structures.

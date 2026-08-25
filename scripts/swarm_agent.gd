@@ -21,6 +21,9 @@ var y: int = 0
 var dir: int = 0
 var carry: bool = false
 
+var hp: float = 1.0
+var dead: bool = false
+
 var straightness: float = 1.0
 var confidence: float = 0.0
 var prev_pf: float = 0.0
@@ -237,5 +240,12 @@ func _resolve_combat(delta: float) -> void:
 			area.take_damage(DOT_PER_SECOND * delta)
 
 
-func take_counter_damage(_amount: float) -> void:
-	pass
+func take_damage(amount: float) -> void:
+	if dead:
+		return
+	hp -= amount
+	if hp <= 0.0:
+		dead = true
+		if swarm_world != null and swarm_world.ant_manager != null:
+			swarm_world.ant_manager.remove_agent(self)
+		queue_free()

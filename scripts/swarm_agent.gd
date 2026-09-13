@@ -36,6 +36,17 @@ var fresh_home_age: int = 0
 
 var visual_jitter: Vector2 = Vector2.ZERO
 
+## Direct-command state (CONTROL / CARNAGE stages). When `command_active` is
+## true the ant steers straight toward `command_goal` (or `command_target` if
+## set) instead of reading the pheromone fields. `command_wp` may hold extra
+## waypoints (e.g. a loop flank or bounce zigzag).
+var command_active: bool = false
+var command_target: Node2D = null
+var command_goal: Vector2i = Vector2i.ZERO
+var command_wp: Array = []
+var command_flee: Vector2i = Vector2i(-1, -1)
+var command_flee_radius: int = 0
+
 
 func _ready() -> void:
 	add_to_group("swarm_agents")
@@ -65,6 +76,12 @@ func _cell_visual_pos() -> Vector2:
 
 
 func update_step() -> void:
+	if command_active or (swarm_world != null and swarm_world.command_mode == SwarmWorld.COMMAND_CARNAGE):
+		refresh_carnage_command()
+		if command_active:
+			_step_direct()
+			_check_pickup_and_delivery(swarm_world)
+			return
 	var world: SwarmWorld = swarm_world
 	var home_field: ScalarField = world.get_field(ScalarFieldManager.FIELD_HOME_PHER)
 	var player_field: ScalarField = world.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
@@ -232,6 +249,124 @@ func _wrapped_delta(a: int, b: int) -> int:
 	if d > 4:
 		d -= 8
 	return d
+
+
+## CARNAGE hook: if the world is in CARNAGE mode, re-target whatever enemy is
+## currently nearest this ant and treat it as an active command.
+func refresh_carnage_command() -> void:
+	if swarm_world == null or swarm_world.command_mode != SwarmWorld.COMMAND_CARNAGE:
+		return
+	var t: Node2D = swarm_world.nearest_target_to(_cell_visual_pos())
+	if t == null:
+		command_active = false
+		command_target = null
+		return
+	command_active = true
+	command_target = t
+	command_goal = _clamp_cell(swarm_world.world_to_cell(t.global_position))
+	command_wp.clear()
+
+
+## Moves one step straight toward the active command goal. Ignores every
+## pheromone field: the best of the 8 neighbours (least distance to goal,
+## tie-broken by straightness) wins. Re-aims at the live target each step so a
+## moving target is tracked to the death.
+func _step_direct() -> void:
+	if swarm_world == null:
+		return
+	var goal := command_goal
+
+	# FLEE-FROM: pick the neighbour farthest from the danger cell; the command
+	# ends once the ant escapes beyond `command_flee_radius`.
+	if command_flee.x >= 0:
+		var dx := x - command_flee.x
+		var dy := y - command_flee.y
+		var dist := maxi(absi(dx), absi(dy))
+		if dist > command_flee_radius:
+			command_active = false
+			command_flee = Vector2i(-1, -1)
+			return
+		_step_flee()
+		return
+
+	# TRACK a live target, else walk the waypoint chain, else tail the goal.
+	if command_target != null and is_instance_valid(command_target):
+		goal = _clamp_cell(swarm_world.world_to_cell(command_target.global_position))
+		command_goal = goal
+	elif not command_wp.is_empty():
+		goal = command_wp[0]
+		if x == goal.x and y == goal.y:
+			command_wp.pop_front()
+			if not command_wp.is_empty():
+				goal = command_wp[0]
+	if command_wp.is_empty() and command_target == null and x == goal.x and y == goal.y:
+		command_active = false
+		return
+
+	var prev_x := x
+	var prev_y := y
+	var best_d := -1
+	var best_score: float = INF
+	for i in range(DIRS_8.size()):
+		var nx := x + DIRS_8[i].x
+		var ny := y + DIRS_8[i].y
+		if swarm_world.blocked(nx, ny):
+			continue
+		if nx == goal.x and ny == goal.y:
+			best_d = i
+			best_score = 0.0
+			break
+		var dist := float((nx - goal.x) * (nx - goal.x) + (ny - goal.y) * (ny - goal.y))
+		var turn := float(abs(_wrapped_delta(dir, i)))
+		var straight := 1.0 - turn / 4.0
+		var score := dist - straight * 4.0
+		if score < best_score:
+			best_score = score
+			best_d = i
+
+	if best_d >= 0:
+		dir = best_d
+		x = x + DIRS_8[dir].x
+		y = y + DIRS_8[dir].y
+
+	var moved: bool = x != prev_x or y != prev_y
+	straightness = 0.8 * straightness + 0.2 * (1.0 if moved else 0.3)
+	if command_target != null and not is_instance_valid(command_target):
+		command_target = null
+		command_active = false
+
+
+## Flee steering: choose the step (of the 8 neighbours) that maximises the
+## Chebyshev distance to the danger cell, tie-broken by straightness so the
+## ant keeps running in one direction instead of wiggling.
+func _step_flee() -> void:
+	var px := command_flee.x
+	var py := command_flee.y
+	var best_d := -1
+	var best_score: float = -INF
+	for i in range(DIRS_8.size()):
+		var nx := x + DIRS_8[i].x
+		var ny := y + DIRS_8[i].y
+		if swarm_world.blocked(nx, ny):
+			continue
+		var dist := maxi(absi(nx - px), absi(ny - py))
+		var turn := float(abs(_wrapped_delta(dir, i)))
+		var straight := 1.0 - turn / 4.0
+		var score := dist * 8.0 + straight * 3.0
+		if score > best_score:
+			best_score = score
+			best_d = i
+
+	if best_d >= 0:
+		dir = best_d
+		x = x + DIRS_8[dir].x
+		y = y + DIRS_8[dir].y
+
+
+func _clamp_cell(c: Vector2i) -> Vector2i:
+	if swarm_world == null:
+		return c
+	return c.clamp(Vector2i.ZERO, Vector2i(swarm_world.cols - 1, swarm_world.rows - 1))
 
 
 func _resolve_combat(delta: float) -> void:

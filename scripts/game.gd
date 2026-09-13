@@ -9,6 +9,7 @@ extends Node2D
 @onready var nest_label: Label = get_node_or_null("CanvasLayer/NestPheromoneLabel") as Label
 @onready var hp_label: Label = get_node_or_null("CanvasLayer/HPLabel") as Label
 @onready var bomb_label: Label = get_node_or_null("CanvasLayer/BombModeLabel") as Label
+@onready var stage_label: Label = get_node_or_null("CanvasLayer/ProgressStageLabel") as Label
 
 func _ready() -> void:
 	Engine.max_fps = 60
@@ -22,15 +23,32 @@ func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:
 		ants_label.text = "Ants: %d" % swarm_world.ant_manager.agents.size()
 	if eminate_label != null and player != null:
-		eminate_label.text = "Eminate: %s (E)" % player.eminate_mode_name()
+		eminate_label.text = "Eminate: %s (E)" % ("LOCKED" if not player.eminate_unlocked else player.eminate_mode_name())
 	if cast_label != null and player != null:
-		cast_label.text = "Cast: %s (V)" % player.hunt_pattern_name()
+		var cast_text := "Direct Hunt"
+		if player.is_control_mode:
+			cast_text = "Command Swarm"
+		elif player.all_hunt_unlocked:
+			cast_text = player.hunt_pattern_name()
+		elif not player.hunt_unlocked:
+			cast_text = "LOCKED"
+		cast_label.text = "Cast: %s (V)" % cast_text
 	if nest_label != null and player != null:
-		nest_label.text = "Nest pheromone: %s (N)" % ("ON" if player.nest_pheromone_enabled else "OFF")
+		nest_label.text = "Nest beacon: %s (N)" % ("LOCKED" if not player.beacon_unlocked else ("ON" if player.nest_pheromone_enabled else "OFF"))
 	if hp_label != null and player != null:
 		hp_label.text = "HP: %.0f / %.0f" % [player.hp, player.MAX_HP]
 	if bomb_label != null and player != null:
-		bomb_label.text = "Bomb: %s (H)" % player.bomb_mode_name()
+		bomb_label.text = "Bomb: %s (H)" % ("LOCKED" if not player.bomb_unlocked else player.bomb_mode_name())
+	if stage_label != null and player != null:
+		stage_label.text = "Progress: %s" % player.stage_name()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if player == null:
+		return
+	if event.is_action_pressed("cycle_progress"):
+		player.advance_progress()
+	elif event.is_action_pressed("cycle_stage_full"):
+		player.cycle_stage()
 
 func _on_deliveries_changed(count: int) -> void:
 	if deliveries_label != null:

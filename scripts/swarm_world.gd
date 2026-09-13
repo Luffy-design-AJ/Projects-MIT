@@ -89,6 +89,23 @@ var _active_cast: Dictionary = {}
 var _active_bomb: Dictionary = {}
 var _nest_suppress_timer: float = 0.0
 var nest_emit_enabled: bool = true
+var _pheromone_locked: bool = false
+
+## Direct-command stage modes. In CONTROL the player casts an order and ants
+## steer straight toward it (no scalar field). In CARNAGE every ant chases the
+## nearest enemy autonomously. Neither stamps pheromone.
+const COMMAND_NONE := 0
+const COMMAND_CONTROL := 1
+const COMMAND_CARNAGE := 2
+var command_mode: int = COMMAND_NONE
+
+## Persistent direct-command state for CONTROL only.
+var _rally_active: bool = false
+var _rally_follow_carrier: bool = false
+var _rally_pos: Vector2 = Vector2.ZERO
+var _bomb_cell: Vector2i = Vector2i(-1, -1)
+var _bomb_mode: int = 0
+var _bomb_timer: float = 0.0
 
 const VIS_REFRESH_INTERVAL: float = 0.1
 
@@ -127,7 +144,250 @@ func set_nest_emit_enabled(enabled: bool) -> void:
 	nest_emit_enabled = enabled
 
 
+## Mechanic stage seam, called by the player on stage change.
+## LOCKOUT zeroes every pheromone field and suppresses nest emission so ants
+## run on their base movement physics with no field influence (random wander).
+## CONTROL/CARNAGE also zero the fields, but command ants directly instead.
+## Every other stage just restores normal emission.
+func set_mode(stage: int) -> void:
+	_pheromone_locked = (stage == Player.Stage.LOCKOUT or stage == Player.Stage.CONTROL or stage == Player.Stage.CARNAGE)
+	if _pheromone_locked:
+		_nest_suppress_timer = 9999.0
+		_zero_all_fields()
+	else:
+		_nest_suppress_timer = minf(_nest_suppress_timer, 0.0)
+
+	match stage:
+		Player.Stage.CONTROL:
+			command_mode = COMMAND_CONTROL
+			_clear_commands()
+		Player.Stage.CARNAGE:
+			command_mode = COMMAND_CARNAGE
+			_clear_commands()
+		_:
+			command_mode = COMMAND_NONE
+			_clear_commands()
+
+
+## Wipes every ant's direct command (and any persistent rally/bomb state) so
+## they fall back to field behaviour. Also called on every stage switch so no
+## order leaks from one stage into the next.
+func _clear_commands() -> void:
+	_rally_active = false
+	_rally_follow_carrier = false
+	_rally_pos = Vector2.ZERO
+	_bomb_cell = Vector2i(-1, -1)
+	_bomb_timer = 0.0
+	if ant_manager == null:
+		return
+	for agent in ant_manager.agents:
+		if is_instance_valid(agent):
+			agent.command_active = false
+			agent.command_target = null
+			agent.command_wp.clear()
+			agent.command_flee = Vector2i(-1, -1)
+			agent.command_flee_radius = 0
+
+
+## Direct-order wrappers: CONTROL issues straight (no-pheromone) commands. The
+## four hunt patterns are implemented as steering shapes, not scalar fields.
+
+## Plain DIRECT: steer the whole swarm toward `world_pos` (or `target`, which
+## is re-aimed every step and so is tracked until it dies).
+func command_swarm_at(world_pos: Vector2, target: Node2D = null) -> void:
+	command_swarm_pattern(world_pos, Vector2.RIGHT, Player.HuntPattern.DIRECT, target)
+
+
+## Pattern-aware direct order. `pattern` is Player.HuntPattern:
+##   DIRECT - whole swarm straight to the anchor (tracking `target` if set).
+##   LOOP   - half the swarm loops the anchor clockwise, half counter-clockwise
+##            (approach flank -> anchor -> retreat flank -> back home).
+##   MULTI  - every ant hunts the enemy nearest to it; a scattered front that
+##            splits across all targets.
+##   BOUNCE - zig-zag approach (two alternating offsets) to the anchor.
+func command_swarm_pattern(world_pos: Vector2, aim_dir: Vector2, pattern: int, target: Node2D = null) -> void:
+	if ant_manager == null:
+		return
+	var anchor: Vector2i
+	if target != null and is_instance_valid(target):
+		anchor = _clamp_cell(world_to_cell(target.global_position))
+	else:
+		anchor = _clamp_cell(world_to_cell(world_pos))
+
+	match pattern:
+		Player.HuntPattern.MULTI:
+			for agent in ant_manager.agents:
+				if not is_instance_valid(agent):
+					continue
+				var near: Node2D = nearest_target_to(cell_to_world(Vector2i(agent.x, agent.y)))
+				if near != null:
+					_issue_direct(agent, _clamp_cell(world_to_cell(near.global_position)), near)
+				else:
+					_issue_direct(agent, anchor, null)
+			return
+		Player.HuntPattern.LOOP:
+			var i := 0
+			var side := 1.0
+			var home := anchor
+			if nest_carrier != null and is_instance_valid(nest_carrier):
+				home = _clamp_cell(world_to_cell(nest_carrier.global_position))
+			for agent in ant_manager.agents:
+				if not is_instance_valid(agent):
+					continue
+				side = -side if i % 2 == 0 else side
+				i += 1
+				var approach := _clamp_cell(anchor + Vector2i(int(20.0 * side), 0))
+				var retreat := _clamp_cell(anchor + Vector2i(0, int(20.0 * side)))
+				_issue_direct(agent, anchor, null, [approach, anchor, retreat, home])
+			return
+		Player.HuntPattern.BOUNCE:
+			var i := 0
+			var amp := 8.0 if aim_dir != Vector2.ZERO else 2.0
+			for agent in ant_manager.agents:
+				if not is_instance_valid(agent):
+					continue
+				var start := Vector2i(agent.x, agent.y)
+				var side := 1.0 if i % 2 == 0 else -1.0
+				i += 1
+				var z1 := _clamp_cell(anchor + Vector2i(int((start.x - anchor.x) * 0.45), int((start.y - anchor.y) * 0.45)) + Vector2i(int(amp * side), 0))
+				var z2 := _clamp_cell(anchor + Vector2i(int((start.x - anchor.x) * 0.7), int((start.y - anchor.y) * 0.7)) + Vector2i(0, int(amp * side)))
+				_issue_direct(agent, anchor, null, [z1, z2])
+			return
+		_:
+			for agent in ant_manager.agents:
+				if is_instance_valid(agent):
+					_issue_direct(agent, anchor, target)
+
+
+func _issue_direct(agent: Node, goal: Vector2i, target: Node2D = null, wp: Array = []) -> void:
+	agent.command_active = true
+	agent.command_goal = goal
+	agent.command_target = target if (target != null and is_instance_valid(target)) else null
+	agent.command_wp.clear()
+	for c in wp:
+		agent.command_wp.append(c)
+	agent.command_flee = Vector2i(-1, -1)
+	agent.command_flee_radius = 0
+
+
+## Direct eminate while held: ATTRACT = gather the swarm at the player (the
+## nest), SCATTER = flee the player's cell until clear. No pheromone.
+func command_eminate(world_pos: Vector2, mode: int, active: bool) -> void:
+	if not active:
+		_rally_active = false
+		_rally_pos = Vector2.ZERO
+		return
+	if mode == Player.EminateMode.SCATTER:
+		_rally_active = false
+		_rally_pos = Vector2.ZERO
+		if ant_manager == null:
+			return
+		var cell := _clamp_cell(world_to_cell(world_pos))
+		for agent in ant_manager.agents:
+			if not is_instance_valid(agent):
+				continue
+			agent.command_active = true
+			agent.command_target = null
+			agent.command_wp.clear()
+			agent.command_goal = Vector2i(agent.x, agent.y)
+			agent.command_flee = cell
+			agent.command_flee_radius = 14
+		return
+	_rally_active = true
+	_rally_pos = world_pos
+
+
+## Direct nest/rally toggle: ON orders the swarm to gather at `world_pos` and
+## keep following it; OFF releases them. Stands in for the nest pheromone in
+## CONTROL where scalar fields are locked out. `follow_carrier` ties the rally
+## to the player so the flock keeps a moving target (the N-toggle), while the
+## held eminate passes a fresh position every frame instead.
+func command_rally(world_pos: Vector2, on: bool, follow_carrier: bool = true) -> void:
+	_rally_active = on
+	_rally_follow_carrier = on and follow_carrier
+	_rally_pos = world_pos
+
+
+## Direct bomb: ATTRACT = every ant is ordered to the reticle cell and kept
+## there for `bomb_attract_duration` (persistently re-issued). SCATTER = every
+## ant flees the reticle cell until it is >14 cells clear.
+func command_point_bomb(world_pos: Vector2, mode: int) -> void:
+	if mode == Player.BombMode.ATTRACT:
+		_bomb_cell = _clamp_cell(world_to_cell(world_pos))
+		_bomb_mode = mode
+		_bomb_timer = bomb_attract_duration
+		_issue_bomb_attract()
+		return
+	if ant_manager == null:
+		return
+	var cell := _clamp_cell(world_to_cell(world_pos))
+	for agent in ant_manager.agents:
+		if not is_instance_valid(agent):
+			continue
+		agent.command_active = true
+		agent.command_target = null
+		agent.command_wp.clear()
+		agent.command_goal = Vector2i(agent.x, agent.y)
+		agent.command_flee = cell
+		agent.command_flee_radius = 14
+
+
+func _issue_bomb_attract() -> void:
+	if ant_manager == null:
+		return
+	for agent in ant_manager.agents:
+		if is_instance_valid(agent):
+			_issue_direct(agent, _bomb_cell, null)
+
+
+## CARNAGE hook: every ant re-targets the nearest enemy each step (via
+## `nearest_target_to`), steering straight at it until it dies, then the next.
+func nearest_target_to(world_pos: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_dist := INF
+	for t in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(t):
+			continue
+		var dist := world_pos.distance_squared_to(t.global_position)
+		if dist < best_dist:
+			best_dist = dist
+			best = t
+	return best
+
+
+## Wipes the four shared scalar fields to zero. Used far from the ants' step so
+## their next read sees no pheromone anywhere.
+func _zero_all_fields() -> void:
+	for name in [
+		ScalarFieldManager.FIELD_HOME_PHER,
+		ScalarFieldManager.FIELD_FOOT_TRAIL,
+		ScalarFieldManager.FIELD_HUNT_PHER,
+		ScalarFieldManager.FIELD_PLAYER_FRESH,
+	]:
+		var field: ScalarField = field_manager.get_field(name)
+		if field != null:
+			field.data.fill(0.0)
+
+
 func _physics_process(delta: float) -> void:
+	if _pheromone_locked:
+		_zero_all_fields()
+	# CONTROL rally order: follow the (moving) rally point once it is active.
+	if _rally_active and command_mode == COMMAND_CONTROL:
+		if ant_manager != null:
+			var rally_ref := _rally_pos
+			if _rally_follow_carrier and nest_carrier != null and is_instance_valid(nest_carrier):
+				rally_ref = nest_carrier.global_position
+			var rally_cell := _clamp_cell(world_to_cell(rally_ref))
+			for agent in ant_manager.agents:
+				if is_instance_valid(agent):
+					_issue_direct(agent, rally_cell, null)
+	# CONTROL bomb attract: keep the swarm bunched on the bomb cell while it
+	# burns, mirroring the scalar attract bomb window.
+	if _bomb_timer > 0.0:
+		_bomb_timer = maxf(0.0, _bomb_timer - delta)
+		if command_mode == COMMAND_CONTROL:
+			_issue_bomb_attract()
 	var home_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HOME_PHER)
 	var move_strength := 0.0
 	if nest_carrier != null and is_instance_valid(nest_carrier):

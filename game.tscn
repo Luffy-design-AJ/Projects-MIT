@@ -82,6 +82,14 @@ offset_bottom = 190.0
 theme_override_font_sizes/font_size = 16
 text = "Bomb: attract (H)"
 
+[node name="ProgressStageLabel" type="Label" parent="CanvasLayer"]
+offset_left = 440.0
+offset_top = 8.0
+offset_right = 700.0
+offset_bottom = 34.0
+theme_override_font_sizes/font_size = 16
+text = "Progress: SPRAY"
+
 [node name="SwarmWorld" type="Node2D" parent="."]
 visible = false
 script = ExtResource("4_swarm")

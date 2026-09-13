@@ -27,6 +27,22 @@ enum HuntPattern { DIRECT, LOOP, MULTI, BOUNCE }
 var hunt_pattern: int = HuntPattern.DIRECT
 var nest_pheromone_enabled: bool = true
 
+## Mechanic progression stages. CONTROL and CARNAGE are direct-command modes
+## (built later). LOCKOUT freezes the player and zeros all pheromone fields so
+## ants wander on their base physics. SPRAY -> EMINATE -> BEACON -> HUNT -> BOMB
+## is the scalar-field unlock ladder; each stage gates only its own abilities.
+enum Stage { CONTROL, CARNAGE, LOCKOUT, SPRAY, EMINATE, BEACON, HUNT, BOMB }
+var stage: int = Stage.SPRAY
+
+var hunt_unlocked := false       # cast (hunt pheromone) works
+var all_hunt_unlocked := false   # loop/multi/bounce patterns available
+var eminate_unlocked := false
+var beacon_unlocked := false
+var bomb_unlocked := false
+var input_locked := false        # CARNAGE / LOCKOUT: player frozen
+var is_control_mode := false     # CONTROL: casts are direct commands
+var _was_eminating := false      # edge-trigger for the control eminate release
+
 var is_casting = false
 var cast_timer = 0
 var is_eminating = false
@@ -57,15 +73,74 @@ func _ready() -> void:
 		swarm_world = parent.get_node("SwarmWorld")
 		if swarm_world != null and swarm_world.has_method("set_nest_carrier"):
 			swarm_world.set_nest_carrier(self)
+	set_stage(stage)
+
+
+## Single source of truth for the mechanic ladder. Every player ability gates on
+## these boolean flags; only this method mutates them.
+func set_stage(s: int) -> void:
+	stage = s
+	input_locked = (s == Stage.CARNAGE or s == Stage.LOCKOUT)
+	is_control_mode = (s == Stage.CONTROL)
+	hunt_unlocked = (is_control_mode or s >= Stage.SPRAY) and not input_locked
+	# CONTROL hands every ability the keys one-by-one, but each one is routed
+	# through the direct-command layer instead of the scalar fields.
+	all_hunt_unlocked = is_control_mode or s >= Stage.HUNT
+	eminate_unlocked = is_control_mode or s >= Stage.EMINATE
+	beacon_unlocked = is_control_mode or s >= Stage.BEACON
+	bomb_unlocked = is_control_mode or s >= Stage.BOMB
+	if not all_hunt_unlocked:
+		hunt_pattern = HuntPattern.DIRECT
+	if input_locked:
+		bomb_aiming = false
+		is_eminating = false
+		velocity = Vector2.ZERO
+	if is_control_mode or not beacon_unlocked:
+		nest_pheromone_enabled = false
+		if swarm_world != null and swarm_world.has_method("set_nest_emit_enabled"):
+			swarm_world.set_nest_emit_enabled(false)
+	elif not nest_pheromone_enabled:
+		nest_pheromone_enabled = true
+		if swarm_world != null and swarm_world.has_method("set_nest_emit_enabled"):
+			swarm_world.set_nest_emit_enabled(true)
+	if swarm_world != null and swarm_world.has_method("set_mode"):
+		swarm_world.set_mode(s)
+	print("Stage: ", stage_name())
+
+
+func stage_name() -> String:
+	return Stage.keys()[stage]
+
+
+## P key: advance the gameplay ladder SPRAY -> EMINATE -> BEACON -> HUNT -> BOMB.
+func advance_progress() -> void:
+	var ladder: Array[int] = [Stage.SPRAY, Stage.EMINATE, Stage.BEACON, Stage.HUNT, Stage.BOMB]
+	var i: int = ladder.find(stage)
+	if i < 0:
+		i = 0
+	set_stage(ladder[(i + 1) % ladder.size()])
+
+
+## F key: cycle every stage live in enum order (CONTROL and CARNAGE included).
+func cycle_stage() -> void:
+	var all: Array[int] = [
+		Stage.CONTROL, Stage.CARNAGE, Stage.LOCKOUT, Stage.SPRAY, Stage.EMINATE,
+		Stage.BEACON, Stage.HUNT, Stage.BOMB,
+	]
+	var i: int = all.find(stage)
+	if i < 0:
+		i = 0
+	set_stage(all[(i + 1) % all.size()])
 
 
 func _physics_process(delta: float) -> void:
 
 	var direction = Vector2.ZERO
 
-	# INPUT
-	direction.x = Input.get_axis("move_left", "move_right")
-	direction.y = Input.get_axis("move_up", "move_down")
+	if not input_locked:
+		# INPUT
+		direction.x = Input.get_axis("move_left", "move_right")
+		direction.y = Input.get_axis("move_up", "move_down")
 
 	direction = direction.normalized()
 
@@ -74,7 +149,7 @@ func _physics_process(delta: float) -> void:
 		last_direction = direction
 
 	# BOMB INPUT
-	if Input.is_action_just_pressed("drop_bomb"):
+	if Input.is_action_just_pressed("drop_bomb") and bomb_unlocked:
 		if not bomb_aiming:
 			bomb_aiming = true
 			bomb_reticle_pos = global_position + last_direction * 40.0
@@ -84,7 +159,7 @@ func _physics_process(delta: float) -> void:
 			_drop_bomb()
 
 	# CAST INPUT
-	if Input.is_action_just_pressed("cast"):
+	if Input.is_action_just_pressed("cast") and hunt_unlocked:
 
 		is_casting = true
 		cast_timer = CAST_DURATION
@@ -93,34 +168,51 @@ func _physics_process(delta: float) -> void:
 		_resolve_and_cast()
 
 
-	if Input.is_action_just_pressed("cycle_cast_pattern"):
+	if Input.is_action_just_pressed("cycle_cast_pattern") and all_hunt_unlocked:
 		hunt_pattern = (hunt_pattern + 1) % 4
 		print("Cast pattern: ", hunt_pattern_name())
 
-	if Input.is_action_just_pressed("cycle_eminate_mode"):
+	if Input.is_action_just_pressed("cycle_eminate_mode") and eminate_unlocked:
 		eminate_mode = (eminate_mode + 1) % 2
 		print("Eminate mode: ", EminateMode.keys()[eminate_mode])
 
-	if Input.is_action_just_pressed("cycle_bomb_mode"):
+	if Input.is_action_just_pressed("cycle_bomb_mode") and bomb_unlocked:
 		bomb_mode = (bomb_mode + 1) % 2
 		print("Bomb mode: ", BombMode.keys()[bomb_mode])
 
-	# Eminate emits hunt pheromone while held (attract: ants follow, scatter: ants flee).
-	is_eminating = Input.is_action_pressed("eminate")
-	if is_eminating and swarm_world != null and swarm_world.has_method("eminate_at"):
-		swarm_world.eminate_at(global_position, eminate_mode)
+	# Eminate: controller pulls the swarm in (attract) or pushes it away
+	# (scatter). In CONTROL it is a direct order, otherwise hunt pheromone.
+	var now_emitting: bool = Input.is_action_pressed("eminate") and eminate_unlocked
+	is_eminating = now_emitting
+	if swarm_world != null:
+		if is_control_mode:
+			if now_emitting:
+				swarm_world.command_eminate(global_position, eminate_mode, true)
+			elif _was_eminating:
+				# Edge-triggered release - otherwise this would clear a standing
+				# rally order (the nest toggle) every single frame.
+				swarm_world.command_eminate(global_position, eminate_mode, false)
+		elif now_emitting and swarm_world.has_method("eminate_at"):
+			swarm_world.eminate_at(global_position, eminate_mode)
+	_was_eminating = now_emitting
 
 	if Input.is_action_just_pressed("toggle_aim_mode"):
 		aim_mode = (aim_mode + 1) % 3
 		print("Aim mode: ", AimMode.keys()[aim_mode])
 
-	if Input.is_action_just_pressed("toggle_nest_pheromone"):
-		nest_pheromone_enabled = not nest_pheromone_enabled
-		if swarm_world != null and swarm_world.has_method("set_nest_emit_enabled"):
-			swarm_world.set_nest_emit_enabled(nest_pheromone_enabled)
-		print("Nest pheromone: ", "ON" if nest_pheromone_enabled else "OFF")
+	if Input.is_action_just_pressed("toggle_nest_pheromone") and beacon_unlocked:
+		if is_control_mode:
+			# CONTROL: the nest beacon is a rally order - gather the swarm here.
+			nest_pheromone_enabled = not nest_pheromone_enabled
+			swarm_world.command_rally(global_position, nest_pheromone_enabled)
+			print("Rally order: ", "ON" if nest_pheromone_enabled else "OFF")
+		else:
+			nest_pheromone_enabled = not nest_pheromone_enabled
+			if swarm_world != null and swarm_world.has_method("set_nest_emit_enabled"):
+				swarm_world.set_nest_emit_enabled(nest_pheromone_enabled)
+			print("Nest pheromone: ", "ON" if nest_pheromone_enabled else "OFF")
 
-	if Input.is_action_just_pressed("Attack"):
+	if Input.is_action_just_pressed("Attack") and not input_locked:
 		is_attacking = true
 		attack_timer = 0.5
 		_perform_melee_strike()
@@ -176,7 +268,7 @@ func _physics_process(delta: float) -> void:
 		velocity = direction * SPEED
 
 		# START DASH
-		if Input.is_action_just_pressed("dash"):
+		if Input.is_action_just_pressed("dash") and not input_locked:
 
 			is_dashing = true
 			dash_timer = DASH_DURATION
@@ -327,9 +419,19 @@ func _hunt_pattern_id() -> String:
 			return "direct"
 
 func _resolve_and_cast() -> void:
-	if swarm_world == null or not swarm_world.has_method("cast_hunt"):
+	if swarm_world == null:
 		return
 	var aim: Array = _resolve_cast_aim()
+	if is_control_mode:
+		# CONTROL: no pheromone - the cast is a direct order shaped by the active
+		# hunt pattern (direct / loop / bounce; multi splits across all targets).
+		var cmd_target: Node2D = aim[1]
+		var cmd_pos: Vector2 = (cmd_target.global_position if (cmd_target != null and is_instance_valid(cmd_target)) else (global_position + aim[0] * 200.0))
+		swarm_world.command_swarm_pattern(cmd_pos, aim[0], hunt_pattern, cmd_target)
+		_spawn_cast_flash(aim[0])
+		return
+	if not swarm_world.has_method("cast_hunt"):
+		return
 	swarm_world.cast_hunt(global_position, aim[0], _hunt_pattern_id(), aim[1])
 	_spawn_cast_flash(aim[0])
 
@@ -369,12 +471,17 @@ func _perform_melee_strike() -> void:
 
 
 func _drop_bomb() -> void:
-	swarm_world.drop_bomb(bomb_reticle_pos, bomb_mode)
 	bomb_aiming = false
+	if is_control_mode:
+		# CONTROL bomb reticle is a direct point-order: attract bunches the
+		# swarm on the cell, scatter runs them off it. No pheromone.
+		swarm_world.command_point_bomb(bomb_reticle_pos, bomb_mode)
+	else:
+		swarm_world.drop_bomb(bomb_reticle_pos, bomb_mode)
 	_spawn_bomb_flash(bomb_reticle_pos)
 	queue_redraw()
 	print("Bomb dropped at cell ", swarm_world.world_to_cell(bomb_reticle_pos),
-		" mode=", BombMode.keys()[bomb_mode])
+		" mode=", BombMode.keys()[bomb_mode], " direct=", "yes" if is_control_mode else "no")
 
 
 func _spawn_bomb_flash(at: Vector2) -> void:

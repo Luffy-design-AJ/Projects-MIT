@@ -55,6 +55,9 @@ func _physics_process(_delta: float) -> bool:
 			print("FAIL: no ASSASSIN-type Enemy found in scene")
 			quit(1)
 			return true
+		# Full-game stage (BOMB): nest pheromone anchors the swarm, matching the
+		# state this duel loop was designed around.
+		player.set_stage(Player.Stage.BOMB)
 		return false
 
 	if not is_instance_valid(assassin):

@@ -13,6 +13,10 @@ const DIRS_8: Array[Vector2i] = [
 
 const DOT_PER_SECOND := 6.0
 const VISUAL_LERP_PER_SEC := 6.0
+## How far (in cells, along the aim) past the terminus the ant is carried before
+## the march lets go of it, so the swarm overshoots slightly and settles onto the
+## target rather than stopping short of it.
+const MARCH_RELEASE_CELLS := 2.0
 
 var swarm_world: SwarmWorld = null
 
@@ -47,6 +51,51 @@ var command_wp: Array = []
 var command_flee: Vector2i = Vector2i(-1, -1)
 var command_flee_radius: int = 0
 
+## Hunt-cast lock-on attack: once a casted ant (one sitting under the active hunt
+## cast's influence) reaches enemy vicinity, it locks onto that enemy and attacks
+## it for `hunt_lockon_seconds`. While locked the ant steers straight at the moving
+## target and the existing overlap DOT keeps it under attack. Bounded by the cast.
+@export var hunt_lockon_seconds: float = 1.5
+## Cell radius around a commanded ant within which a nearby enemy triggers lock-on.
+@export var hunt_lockon_radius_cells: float = 1.5
+## Hunt-field value an ant must be sitting in to count as "commanded" (under the
+## cast's or an attract bomb's influence). Elsewhere it is near zero, so this
+## selects only ants the player actually reached with a cast/bomb.
+const HUNT_LOCKON_MIN_HUNT := 0.1
+var lock_timer: float = 0.0
+
+## Cast funnel — PURE ANIMATION, writes no pheromone.
+##
+## The cast itself is a pheromone trail in the shared scalar field (see
+## SwarmWorld._apply_cast); ants follow that trail by ordinary field sensing, the
+## same way they follow home and foot-trail. The funnel is NOT part of that
+## system. It is a brief, local animation whose only job is to scoop up the ants
+## standing on top of the player and flick them out into the trail, so the crowd
+## milling at the nest does not smother the cast as it leaves the body.
+##
+## It is deliberately short (see `funnel_seconds`). A long funnel is just an ant
+## standing still, which is precisely the problem it is meant to solve. When the
+## animation ends the ant is dropped into the trail and normal field-driven
+## movement resumes immediately.
+var funnel_active: bool = false
+## 0 → 1 across the animation.
+var funnel_t: float = 0.0
+var funnel_origin: Vector2 = Vector2.ZERO
+var funnel_dir: Vector2 = Vector2.RIGHT
+## The ant's own lateral offset from the aim axis, in pixels, preserved from
+## where it stood. Every ant keeps a DIFFERENT offset, so they spill into the
+## trail as a spread-out front instead of piling onto one shared point.
+var funnel_lane: float = 0.0
+var funnel_entry_angle: float = 0.0
+var funnel_entry_radius: float = 0.0
+## Cast-pheromone level at which the funnel considers the handover complete and
+## stops nudging: the ant is standing in a real trail, so the field will take
+## it from here.
+const HUNT_TRAIL_MIN := 0.25
+## Short lockout after launch so a freshly dropped ant is not immediately
+## re-scooped by the still-active cast.
+var funnel_cooldown: float = 0.0
+
 
 func _ready() -> void:
 	add_to_group("swarm_agents")
@@ -57,9 +106,19 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if swarm_world == null:
 		return
-	position = position.lerp(_cell_visual_pos(), 1.0 - exp(-VISUAL_LERP_PER_SEC * delta))
 	queue_redraw()
+	if funnel_active:
+		# The funnel animation owns this frame's position. Still tick contact
+		# damage so a scooping ant that brushes an enemy keeps biting.
+		_advance_funnel(delta)
+		_resolve_combat(delta)
+		return
+	position = position.lerp(_cell_visual_pos(), 1.0 - exp(-VISUAL_LERP_PER_SEC * delta))
+	_advance_hunt_lockon(delta)
 	_resolve_combat(delta)
+	if funnel_cooldown > 0.0:
+		funnel_cooldown -= delta
+	_try_capture_funnel()
 
 
 func _draw() -> void:
@@ -76,8 +135,15 @@ func _cell_visual_pos() -> Vector2:
 
 
 func update_step() -> void:
+	# While the funnel animation is playing, the ant is mid-handover: skip the
+	# field-scoring step so the pheromone it is being dropped into does not fight
+	# the animation for its position. As soon as the animation ends it is back
+	# under full field control.
+	if funnel_active:
+		return
 	if command_active or (swarm_world != null and swarm_world.command_mode == SwarmWorld.COMMAND_CARNAGE):
-		refresh_carnage_command()
+		if lock_timer <= 0.0:
+			refresh_carnage_command()
 		if command_active:
 			_step_direct()
 			_check_pickup_and_delivery(swarm_world)
@@ -267,9 +333,197 @@ func refresh_carnage_command() -> void:
 	command_wp.clear()
 
 
-## Moves one step straight toward the active command goal. Ignores every
-## pheromone field: the best of the 8 neighbours (least distance to goal,
-## tie-broken by straightness) wins. Re-aims at the live target each step so a
+## Ticks the hunt-cast lock-on attack. While a lock is active it counts down and,
+## on expiry (or if the target dies), releases the command so the ant returns to
+## field-driven movement. When not locked, a casted ant that has reached enemy
+## vicinity engages a fresh lock-on against that enemy.
+func _advance_hunt_lockon(delta: float) -> void:
+	if lock_timer > 0.0:
+		lock_timer -= delta
+		if lock_timer <= 0.0 or not is_instance_valid(command_target):
+			lock_timer = 0.0
+			command_target = null
+			command_active = false
+		return
+	_try_engage_hunt_lockon()
+
+
+## Engages the lock-on when this ant is under an active hunt cast OR an active
+## bomb and an enemy is within `hunt_lockon_radius_cells`. Sets the enemy as
+## `command_target` so the normal command steering tracks it and the overlap DOT
+## keeps it under attack.
+func _try_engage_hunt_lockon() -> void:
+	if command_active or lock_timer > 0.0:
+		return
+	if swarm_world == null:
+		return
+	if not (swarm_world.hunt_cast_active() or swarm_world.bomb_active()):
+		return
+	# While a cast is running, ants still inside the cast origin's march zone must
+	# march out in the cast direction and must NOT divert to a point-blank enemy.
+	# Past that zone they may lock on as usual (e.g. at the stop basin).
+	if swarm_world.funnel_captures(_cell_visual_pos()):
+		return
+	var hunt: ScalarField = swarm_world.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+	if hunt.get_cell(x, y) <= HUNT_LOCKON_MIN_HUNT:
+		return
+	# Prefer the enemy the cast is PINNED to, so an unrelated enemy standing beside
+	# the player cannot hijack the march. The pin is only a preference, never a
+	# gate: when it has died, wandered off its pinned cell, or was never resolved,
+	# fall back to the nearest enemy in reach so the swarm always attacks whatever
+	# it actually walks into.
+	var enemy: Node2D = null
+	if swarm_world.hunt_cast_active():
+		var anchor: Node2D = swarm_world.cast_pinned_target()
+		if anchor != null and _target_lockable(anchor):
+			enemy = anchor
+	if enemy == null:
+		enemy = swarm_world.nearest_target_within_radius(_cell_visual_pos(), hunt_lockon_radius_cells)
+	if enemy == null:
+		return
+	command_active = true
+	command_target = enemy
+	command_goal = _clamp_cell(swarm_world.world_to_cell(enemy.global_position))
+	command_wp.clear()
+	lock_timer = hunt_lockon_seconds
+
+
+## True when `target` is a live, lockable enemy within the lock-on radius.
+func _target_lockable(target: Node2D) -> bool:
+	if target == null or not is_instance_valid(target):
+		return false
+	var d: float = _cell_visual_pos().distance_to(target.global_position)
+	return d <= hunt_lockon_radius_cells * swarm_world.cell_size
+
+
+## Scoops this ant into the cast funnel if a hunt cast is running and the ant is
+## within the small radius around the cast origin. This is pure animation: it
+## writes no pheromone and consults no field. It exists purely to clear ants off
+## the player so the pheromone trail they are meant to follow is not buried under
+## the nest crowd.
+func _try_capture_funnel() -> void:
+	if funnel_active or lock_timer > 0.0 or funnel_cooldown > 0.0:
+		return
+	var cast: Dictionary = swarm_world.active_cast_funnel()
+	if cast.is_empty():
+		return
+	var origin: Vector2 = cast["origin"]
+	var r: float = swarm_world.funnel_capture_radius_cells * swarm_world.cell_size
+	var off := _cell_visual_pos() - origin
+	if off.length() > r:
+		return
+	funnel_active = true
+	funnel_t = 0.0
+	funnel_origin = origin
+	funnel_dir = cast["dir"]
+	funnel_entry_radius = off.length()
+	funnel_entry_angle = off.angle()
+	# Keep this ant's own offset from the aim axis. Every ant retains a different
+	# one, so on launch they spread across the trail rather than converging on a
+	# single cell (which is what made them pile up and stall there).
+	var perp := Vector2(funnel_dir.y, -funnel_dir.x)
+	funnel_lane = off.dot(perp)
+
+
+## Drives the short gather animation. The corkscrew's centre travels outward along
+## the aim while its radius collapses, so the ant visibly moves forward the whole
+## time instead of spinning on the spot. On completion the ant is dropped into the
+## pheromone trail a few cells out and immediately reverts to field-driven
+## movement — the animation is over in a fraction of a second and is never a
+## place an ant comes to rest.
+func _advance_funnel(delta: float) -> void:
+	var dur: float = maxf(0.05, swarm_world.funnel_seconds)
+	funnel_t += delta / dur
+	if funnel_t >= 1.0:
+		_launch_from_funnel()
+		return
+	var t: float = clampf(funnel_t, 0.0, 1.0)
+	var ang: float = funnel_entry_angle + swarm_world.funnel_turns * TAU * t
+	var travel: float = swarm_world.funnel_travel_cells * swarm_world.cell_size * t
+	var center: Vector2 = funnel_origin + funnel_dir * travel
+	var perp := Vector2(funnel_dir.y, -funnel_dir.x)
+	# The lane offset is held throughout, so the ant keeps its place in the front.
+	var r: float = funnel_entry_radius * pow(1.0 - t, 1.3)
+	position = center + perp * funnel_lane + Vector2(cos(ang), sin(ang)) * r
+
+
+## Ends the animation and hands the ant back to the scalar field. It is dropped
+## `funnel_launch_cells` down the trail, already facing the aim, so the pheromone
+## it is now standing in immediately carries it further out. This is the handover
+## point: from here the ant is moved by the cast's pheromone like any other.
+func _launch_from_funnel() -> void:
+	funnel_active = false
+	funnel_t = 0.0
+	funnel_cooldown = 0.5
+	var world: SwarmWorld = swarm_world
+	var perp := Vector2(funnel_dir.y, -funnel_dir.x)
+	var drop: Vector2 = funnel_origin + funnel_dir * (world.funnel_travel_cells * world.cell_size) + perp * funnel_lane
+	position = drop
+	dir = _dir_index_from_vector(funnel_dir)
+	var cell := _clamp_cell(world.world_to_cell(drop))
+	for _i in range(maxi(1, world.funnel_launch_cells)):
+		var step := cell + DIRS_8[dir]
+		if not world.blocked(step.x, step.y):
+			cell = step
+	x = cell.x
+	y = cell.y
+	straightness = 1.0
+	confidence = 0.6
+	# Hand off to the trail: nudge forward until genuinely standing in the cast's
+	# own pheromone. Each hunt pattern lays its trail somewhere different (multi
+	# sprays toward every enemy, bounce runs a zigzag), so dropping blindly down
+	# the aim could leave the ant in bare ground with no scent to follow — which
+	# is what made them mill at the mouth. Scent-finding the handover works for
+	# every pattern without the funnel needing to know the pattern's shape.
+	_settle_into_trail()
+
+
+## Steps this ant up to a few cells in whichever direction carries the strongest
+## cast pheromone, stopping as soon as it is standing in a real trail. Falls back
+## to the aim direction when no nearby cell has any scent at all. Purely a
+## handover helper — it moves the ant ONTO the trail, it does not follow it.
+func _settle_into_trail() -> void:
+	var world: SwarmWorld = swarm_world
+	var hunt: ScalarField = world.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+	var here: float = hunt.get_cell(x, y)
+	if here >= HUNT_TRAIL_MIN:
+		return
+	var best := Vector2i(x, y)
+	var best_v := here
+	for d in range(DIRS_8.size()):
+			var nx: int = x + DIRS_8[d].x
+			var ny: int = y + DIRS_8[d].y
+			if world.blocked(nx, ny):
+				continue
+			var v: float = hunt.get_cell(nx, ny)
+			if v > best_v:
+				best_v = v
+				best = Vector2i(nx, ny)
+	if best_v > here:
+		x = best.x
+		y = best.y
+		position = _cell_visual_pos()
+		dir = _dir_index_from_vector(funnel_dir)
+
+
+func _dir_index_from_vector(v: Vector2) -> int:
+	if v.length() < 0.001:
+		return dir
+	var vn := v.normalized()
+	var best := 0
+	var best_dot := -INF
+	for i in range(DIRS_8.size()):
+		var d: float = Vector2(DIRS_8[i]).normalized().dot(vn)
+		if d > best_dot:
+			best_dot = d
+			best = i
+	return best
+
+
+## Direct-command step (CARNAGE / lock-on). Steers the ant straight at its
+## command goal, walking waypoints when a route is set, until it arrives or the
+## command is cleared. A fleeing command instead picks the neighbour farthest
+## from the danger cell. The target is re-read every step, so a live
 ## moving target is tracked to the death.
 func _step_direct() -> void:
 	if swarm_world == null:

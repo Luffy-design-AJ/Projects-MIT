@@ -43,6 +43,48 @@ signal deliveries_changed(count: int)
 @export var bounce_side_cells: int = 6
 @export var bounce_waypoint_count: int = 4
 
+@export_group("Funnel (animation only)")
+## The funnel is a PURE ANIMATION on the ant side — it writes NO pheromone at
+## all. Its only job is to scoop up ants standing on top of the player and
+## flick them out into the already-stamped cast lane, so the cast does not have
+## to fight the crowd that is milling around the nest. It must stay brief: the
+## moment an ant lands in the lane it is handed back to normal field-driven
+## movement and the pheromone takes over.
+@export var funnel_capture_radius_cells: int = 4
+## Seconds the gather+launch animation lasts. Kept short on purpose — a long
+## funnel is just an ant standing still, which is the exact problem it is meant
+## to solve.
+@export var funnel_seconds: float = 0.3
+## How far (in cells) along the aim an ant is placed the instant its funnel
+## animation completes, so it is already moving forward when the pheromone
+## takes over instead of pausing at the mouth.
+@export var funnel_launch_cells: int = 4
+## Revolutions of the entry corkscrew. Low, so it reads as a smooth scoop rather
+## than a blur.
+@export var funnel_turns: float = 0.5
+## How far (in cells) along the aim the corkscrew's centre travels, so the
+## animation itself carries the ant outward instead of spinning it in place.
+@export var funnel_travel_cells: float = 2.0
+
+@export_group("Arrive")
+## Radius (in cells) of the dense arrive basin stamped at the fixed stop anchor
+## (the enemy cell resolved once at cast time). A packed mass of ants holds here
+## and deals DOT on overlap. No lock-on — the anchor never follows the enemy.
+@export var arrive_hold_cells: int = 2
+@export var arrive_hold_strength: float = 6.0
+## Half-width (in cells) of the wall of zero hunt stamped from just past the stop
+## anchor out to the cast reach, so the swarm stops continued travel in that
+## direction instead of plowing past. Only stamped when an enemy is on the path.
+@export var terminus_void_len_cells: int = 3
+@export var terminus_void_strength: float = 7.0
+
+## Fixed corridor half-width (in cells) used when resolving the stop anchor, so a
+## cast that merely passes an enemy still halts there. Independent of the funnel.
+const STOP_CORRIDOR_MARGIN_CELLS := 7
+## How far (in cells) the pinned enemy may drift from its pinned stop cell
+## before the cast stops holding for it.
+const PIN_HOLD_CELLS := 2
+
 @export_group("Bomb")
 @export var bomb_radius_cells: int = 20
 @export var bomb_strength: float = 2.0
@@ -355,6 +397,90 @@ func nearest_target_to(world_pos: Vector2) -> Node2D:
 	return best
 
 
+## True while a hunt cast is active. Gates the agents' hunt-cast lock-on attack.
+func hunt_cast_active() -> bool:
+	return not _active_cast.is_empty()
+
+
+## The active cast's funnel source: its world origin and normalized aim. Returned
+## as {"origin": Vector2, "dir": Vector2} while a hunt cast is running, else an
+## empty Dictionary. The ant-side funnel ANIMATION reads this to scoop up ants
+## standing on the player and flick them into the trail. Purely kinematic — it
+## writes no pheromone; the cast's pheromone is stamped separately by
+## `_apply_cast`.
+func active_cast_funnel() -> Dictionary:
+	if _active_cast.is_empty():
+		return {}
+	var d: Vector2 = _active_cast["aim_dir"]
+	if d.length() < 0.001:
+		d = Vector2.RIGHT
+	return {"origin": _active_cast["world_pos"], "dir": d.normalized()}
+
+
+## True while a bomb is active. Lets the same hunt-cast lock-on attack also be
+## triggered by a bomb's field instead of a cast. An attract bomb writes positive
+## hunt scent (lock-on can engage); a scatter bomb writes negative scent, so the
+## agent's existing "must sit in positive hunt" check keeps ants fleeing it.
+func bomb_active() -> bool:
+	return not _active_bomb.is_empty()
+
+
+## True when `world_pos` lies inside the active cast's funnel capture zone (the
+## immediate vicinity of the cast origin). Ants inside this zone are under the
+## cast's command and must march out rather than divert to a lock-on attack — this
+## is what stops a point-blank enemy from hijacking the cast. Returns false when
+## no cast is active, so bomb-driven lock-on is unaffected.
+func funnel_captures(world_pos: Vector2) -> bool:
+	if _active_cast.is_empty():
+		return false
+	var origin: Vector2 = _active_cast["world_pos"]
+	var r: float = funnel_capture_radius_cells * cell_size
+	return world_pos.distance_squared_to(origin) <= r * r
+
+
+## The enemy the active cast is pinned to: the stop anchor resolved ONCE at cast
+## time, returned as a live node so ants can attack it on arrival. Returns null
+## when there is no active cast or the cast has no stop anchor. Lock-on must only
+## ever target THIS enemy — re-deriving "nearest enemy" each time is what let a
+## point-blank enemy hijack the march.
+func cast_pinned_target() -> Node2D:
+	if _active_cast.is_empty():
+		return null
+	var stop_cell: Vector2i = _active_cast.get("stop_cell", Vector2i(-1, -1))
+	if stop_cell.x < 0 or stop_cell.y < 0:
+		return null
+	var best: Node2D = null
+	var best_d := INF
+	for t in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(t):
+			continue
+		# A couple of cells of tolerance so ordinary enemy jitter does not drop
+		# the hold the instant it takes a step.
+		var d := Vector2(_clamp_cell(world_to_cell(t.global_position)) - stop_cell).length()
+		if d > float(PIN_HOLD_CELLS):
+			continue
+		if d < best_d:
+			best_d = d
+			best = t
+	return best
+
+
+## The nearest `swarm_targets` node within `radius_cells` of `world_pos`, or null.
+## A casted ant uses this to decide when it has reached enemy vicinity.
+func nearest_target_within_radius(world_pos: Vector2, radius_cells: float) -> Node2D:
+	var best: Node2D = null
+	var best_dist := INF
+	var r := radius_cells * cell_size
+	for t in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(t):
+			continue
+		var dist := world_pos.distance_squared_to(t.global_position)
+		if dist <= r * r and dist < best_dist:
+			best_dist = dist
+			best = t
+	return best
+
+
 ## Wipes the four shared scalar fields to zero. Used far from the ants' step so
 ## their next read sees no pheromone anywhere.
 func _zero_all_fields() -> void:
@@ -418,6 +544,8 @@ func _physics_process(delta: float) -> void:
 		else:
 			_active_cast["timer"] = timer
 			_active_cast["elapsed"] = float(_active_cast["elapsed"]) + delta
+			# Re-stamp every frame so the trail does not decay out from under the
+			# ants that are following it.
 			_apply_cast(
 				_active_cast["world_pos"],
 				_active_cast["aim_dir"],
@@ -488,22 +616,62 @@ func drop_bomb(world_pos: Vector2, mode: int = 0) -> void:
 	_nest_suppress_timer = bomb_nest_suppress_seconds
 
 
-## Cast the active hunt pattern by stamping the shared hunt field, then
-## re-stamping it every frame for `cast_effect_seconds` so the structure stays
-## strong enough for ants to follow. Player → scalar field → ant; never a
-## direct command.
+## Cast the active hunt pattern by stamping the shared hunt pheromone field, then
+## re-stamping it every frame for `cast_effect_seconds` so the trail stays strong
+## enough for ants to follow. The cast IS a smell: ants are never commanded, they
+## simply find this trail more attractive than the alternatives and walk down it.
+## The player casts into the same scalar field the rest of the simulation uses —
+## home, foot-trail, bombs and cast all compete on equal terms, which is the point.
 ## pattern: "direct" | "loop" | "multi" | "bounce"
 func cast_hunt(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: Node2D = null) -> void:
+	var dir_n := aim_dir.normalized()
+	if dir_n == Vector2.ZERO:
+		dir_n = Vector2.RIGHT
 	_active_cast = {
 		"pattern": pattern,
 		"world_pos": world_pos,
-		"aim_dir": aim_dir,
+		"aim_dir": dir_n,
 		"target": target,
 		"timer": cast_effect_seconds,
 		"elapsed": 0.0,
+		"stop_cell": _resolve_stop_cell(_clamp_cell(world_to_cell(world_pos)), dir_n, target),
 	}
 	_nest_suppress_timer = nest_suppress_seconds
-	_apply_cast(world_pos, aim_dir, pattern, target, 0.0)
+	_apply_cast(world_pos, dir_n, pattern, target, 0.0)
+
+
+## The cell where a marching swarm should stop and attack, resolved ONCE at cast
+## time and then fixed (no lock-on). Prefers the aimed-at target; otherwise picks
+## the first enemy (smallest forward distance) sitting near the march lane, so a
+## cast that merely passes an enemy still halts there and attacks. Returns
+## Vector2i(-1, -1) when no enemy is near the path -> the march runs long.
+func _resolve_stop_cell(start: Vector2i, aim_dir: Vector2, target: Node2D = null) -> Vector2i:
+	if target != null and is_instance_valid(target) and target.is_in_group("swarm_targets"):
+		return _clamp_cell(world_to_cell(target.global_position))
+	var dir_n := aim_dir.normalized()
+	if dir_n == Vector2.ZERO:
+		dir_n = Vector2.RIGHT
+	var perp := Vector2(dir_n.y, -dir_n.x)
+	var reach := float(maxi(1, cast_reach_cells))
+	var lane_slope: float = tan(deg_to_rad(30.0))
+	var margin := float(STOP_CORRIDOR_MARGIN_CELLS)
+	var best := Vector2i(-1, -1)
+	var best_along := INF
+	for t in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(t):
+			continue
+		var cell := _clamp_cell(world_to_cell(t.global_position))
+		var off := Vector2(cell - start)
+		var along := off.dot(dir_n)
+		if along < 1.0 or along > reach:
+			continue
+		var lat: float = absf(off.dot(perp))
+		if lat > lane_slope * along + margin:
+			continue
+		if along < best_along:
+			best_along = along
+			best = cell
+	return best
 
 
 func _apply_cast(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: Node2D = null, elapsed: float = 0.0) -> void:
@@ -520,6 +688,40 @@ func _apply_cast(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: 
 			_stamp_multi_hunt(start, dir_n)
 		"bounce":
 			_stamp_bounce_hunt(start, dir_n, target)
+	_stamp_terminus_hold(start, dir_n)
+
+
+## The cast's stop anchor, re-stamped every frame with the rest of the cast.
+## When an enemy is on the march path its cell was pinned once at cast time: a
+## dense arrive basin is stamped there and a wall of zero hunt blocks continued
+## travel in that direction, so the swarm stops at the anchor and attacks via
+## the pinned lock-on. The anchor is never re-derived while the enemy moves, so
+## there is no chasing.
+func _stamp_terminus_hold(start: Vector2i, dir_n: Vector2) -> void:
+	var stop_cell: Vector2i = _active_cast.get("stop_cell", Vector2i(-1, -1))
+	if stop_cell.x < 0 or stop_cell.y < 0:
+		return
+	# Nothing left to attack at the anchor (it died, or walked clear of it): drop
+	# the hold entirely rather than leave a stale sink. The trail then runs on to
+	# its natural end and the swarm disperses instead of milling on empty ground.
+	if cast_pinned_target() == null:
+		return
+	# Repelling void across the whole trail just PAST the anchor, so the swarm
+	# arrives and stops instead of walking past. The cast fans out to a +/-30
+	# degree wedge, so the void has to span that wedge at the anchor's distance or
+	# ants simply stroll around its edge. Negative because a void of zero is just
+	# "no smell", which home pheromone out-competes anyway.
+	var along := Vector2(stop_cell - start).dot(dir_n)
+	var half_w := int(tan(deg_to_rad(30.0)) * along) + 2
+	var perp := Vector2(dir_n.y, -dir_n.x)
+	for t in range(1, terminus_void_len_cells + 1):
+		var band := stop_cell + Vector2i(round(dir_n.x * float(t)), round(dir_n.y * float(t)))
+		for s in range(-half_w, half_w + 1):
+			_hunt_set_disc(_clamp_cell(band + Vector2i(round(perp.x * float(s)), round(perp.y * float(s)))), 1, -terminus_void_strength)
+	# The attract basin goes on last so the wall's encroachment cannot erode the
+	# sink the swarm is meant to settle into. Fixed cell, never re-derived: no
+	# chasing, and the anchor stays put even if the enemy walks away.
+	_hunt_set_disc(stop_cell, arrive_hold_cells, arrive_hold_strength)
 
 
 func _hunt_stamp(c: Vector2i, r: int, v: float) -> void:
@@ -803,7 +1005,21 @@ func _draw_field(field_name: String, color: Color, threshold: float) -> void:
 
 
 func _draw_arena_border() -> void:
-	draw_rect(Rect2(origin, arena_size), Color(0.6, 0.6, 0.6, 0.4), false, 1.0)
+	if cols <= 0 or rows <= 0:
+		return
+	var field_size := Vector2(float(cols), float(rows)) * cell_size
+	var rect := Rect2(origin, field_size)
+	draw_rect(rect, Color(0.55, 0.85, 1.0, 0.06), true)
+	draw_rect(rect, Color(0.45, 0.80, 1.0, 0.85), false, 3.0)
+	draw_rect(rect.grow(-6.0), Color(0.45, 0.80, 1.0, 0.28), false, 1.0)
+	var tick := 26.0
+	var col := Color(0.70, 0.92, 1.0, 0.95)
+	draw_line(rect.position, rect.position + Vector2(tick, 0.0), col, 4.0)
+	draw_line(rect.position, rect.position + Vector2(0.0, tick), col, 4.0)
+	draw_line(rect.position + Vector2(field_size.x, 0.0), rect.position + Vector2(field_size.x - tick, 0.0), col, 4.0)
+	draw_line(rect.position + Vector2(field_size.x, 0.0), rect.position + field_size, col, 4.0)
+	draw_line(rect.position + Vector2(0.0, field_size.y), rect.position + Vector2(0.0, field_size.y - tick), col, 4.0)
+	draw_line(rect.position + field_size, rect.position + field_size - Vector2(tick, 0.0), col, 4.0)
 
 
 func _draw_nest() -> void:

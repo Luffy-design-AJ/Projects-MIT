@@ -10,6 +10,8 @@ extends Node2D
 @onready var hp_label: Label = get_node_or_null("CanvasLayer/HPLabel") as Label
 @onready var bomb_label: Label = get_node_or_null("CanvasLayer/BombModeLabel") as Label
 @onready var stage_label: Label = get_node_or_null("CanvasLayer/ProgressStageLabel") as Label
+@onready var canvas_layer: CanvasLayer = get_node_or_null("CanvasLayer") as CanvasLayer
+@onready var options_panel: OptionsPanel = null
 
 func _ready() -> void:
 	Engine.max_fps = 60
@@ -18,6 +20,10 @@ func _ready() -> void:
 		return
 	swarm_world.deliveries_changed.connect(_on_deliveries_changed)
 	_on_deliveries_changed(swarm_world.deliveries)
+	if canvas_layer != null:
+		options_panel = OptionsPanel.new()
+		canvas_layer.add_child(options_panel)
+		options_panel.setup(swarm_world)
 
 func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:
@@ -43,6 +49,10 @@ func _process(_delta: float) -> void:
 		stage_label.text = "Progress: %s" % player.stage_name()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_options"):
+		if options_panel != null:
+			options_panel.toggle()
+		return
 	if player == null:
 		return
 	if event.is_action_pressed("cycle_progress"):

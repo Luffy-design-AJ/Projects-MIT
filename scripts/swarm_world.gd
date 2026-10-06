@@ -128,6 +128,7 @@ var _sticky_timer: float = 0.0
 var _vis_timer: float = 0.0
 var _vis_layers: Array = []
 var _active_cast: Dictionary = {}
+var _cast_seq: int = 0
 var _active_bomb: Dictionary = {}
 var _nest_suppress_timer: float = 0.0
 var nest_emit_enabled: bool = true
@@ -414,7 +415,7 @@ func active_cast_funnel() -> Dictionary:
 	var d: Vector2 = _active_cast["aim_dir"]
 	if d.length() < 0.001:
 		d = Vector2.RIGHT
-	return {"origin": _active_cast["world_pos"], "dir": d.normalized()}
+	return {"origin": _active_cast["world_pos"], "dir": d.normalized(), "seq": int(_active_cast.get("seq", 0))}
 
 
 ## True while a bomb is active. Lets the same hunt-cast lock-on attack also be
@@ -624,6 +625,7 @@ func drop_bomb(world_pos: Vector2, mode: int = 0) -> void:
 ## home, foot-trail, bombs and cast all compete on equal terms, which is the point.
 ## pattern: "direct" | "loop" | "multi" | "bounce"
 func cast_hunt(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: Node2D = null) -> void:
+	_cast_seq += 1
 	var dir_n := aim_dir.normalized()
 	if dir_n == Vector2.ZERO:
 		dir_n = Vector2.RIGHT
@@ -635,6 +637,7 @@ func cast_hunt(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: No
 		"timer": cast_effect_seconds,
 		"elapsed": 0.0,
 		"stop_cell": _resolve_stop_cell(_clamp_cell(world_to_cell(world_pos)), dir_n, target),
+		"seq": _cast_seq,
 	}
 	_nest_suppress_timer = nest_suppress_seconds
 	_apply_cast(world_pos, dir_n, pattern, target, 0.0)

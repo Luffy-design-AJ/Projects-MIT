@@ -53,7 +53,7 @@ var command_flee_radius: int = 0
 
 ## Hunt-cast lock-on attack: once a casted ant (one sitting under the active hunt
 ## cast's influence) reaches enemy vicinity, it locks onto that enemy and attacks
-## it for `hunt_lockon_seconds`. While locked the ant steers straight at the moving
+## it for `hunt_lockon_seconds`. While loc \ked the ant steers straight at the moving
 ## target and the existing overlap DOT keeps it under attack. Bounded by the cast.
 @export var hunt_lockon_seconds: float = 1.5
 ## Cell radius around a commanded ant within which a nearby enemy triggers lock-on.
@@ -95,6 +95,7 @@ const HUNT_TRAIL_MIN := 0.25
 ## Short lockout after launch so a freshly dropped ant is not immediately
 ## re-scooped by the still-active cast.
 var funnel_cooldown: float = 0.0
+var funnel_done_seq: int = -1
 
 
 func _ready() -> void:
@@ -412,8 +413,13 @@ func _try_capture_funnel() -> void:
 	var off := _cell_visual_pos() - origin
 	if off.length() > r:
 		return
+	var cdict: Dictionary = swarm_world.active_cast_funnel()
+	var cseq: int = int(cdict.get("seq", 0))
+	if cseq == funnel_done_seq:
+		return
 	funnel_active = true
 	funnel_t = 0.0
+	funnel_done_seq = cseq
 	funnel_origin = origin
 	funnel_dir = cast["dir"]
 	funnel_entry_radius = off.length()

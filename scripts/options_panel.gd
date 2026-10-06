@@ -21,6 +21,15 @@ func toggle() -> void:
 	visible = not visible
 
 
+## Handles the pause hotkey here rather than in game.gd: this panel runs
+## PROCESS_MODE_ALWAYS, so it still receives input while the tree is paused.
+## Anywhere else would let key 2 pause but not resume it.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_pause"):
+		_toggle_paused()
+		get_viewport().set_input_as_handled()
+
+
 func _set_paused(paused: bool) -> void:
 	get_tree().paused = paused
 	if _pause_button != null:
@@ -147,7 +156,7 @@ func _header(list: VBoxContainer) -> void:
 	_pause_button.pressed.connect(_toggle_paused)
 
 	var hint := Label.new()
-	hint.text = "Tab to close"
+	hint.text = "Tab to close  •  2 to pause/resume"
 	hint.add_theme_font_size_override("font_size", 12)
 	list.add_child(hint)
 

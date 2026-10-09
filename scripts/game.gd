@@ -12,6 +12,7 @@ extends Node2D
 @onready var stage_label: Label = get_node_or_null("CanvasLayer/ProgressStageLabel") as Label
 @onready var canvas_layer: CanvasLayer = get_node_or_null("CanvasLayer") as CanvasLayer
 @onready var options_panel: OptionsPanel = null
+@onready var enemy1: Enemy = get_node_or_null("Enemy1") as Enemy
 
 func _ready() -> void:
 	Engine.max_fps = 60
@@ -24,6 +25,12 @@ func _ready() -> void:
 		options_panel = OptionsPanel.new()
 		canvas_layer.add_child(options_panel)
 		options_panel.setup(swarm_world)
+	if enemy1 != null:
+		match get_node("/root/GameConfig").choice:
+			get_node("/root/GameConfig").Choice.NONE:
+				enemy1.type = Enemy.Type.PLACEHOLDER
+			get_node("/root/GameConfig").Choice.ASSASSIN:
+				enemy1.type = Enemy.Type.ASSASSIN
 
 func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:

@@ -154,6 +154,12 @@ func _header(list: VBoxContainer) -> void:
 	_pause_button.focus_mode = Control.FOCUS_NONE
 	head.add_child(_pause_button)
 	_pause_button.pressed.connect(_toggle_paused)
+	
+	var menu_button := Button.new()
+	menu_button.text = "Back to Menu"
+	menu_button.focus_mode = Control.FOCUS_NONE
+	head.add_child(menu_button)
+	menu_button.pressed.connect(_back_to_menu)
 
 	var hint := Label.new()
 	hint.text = "Tab to close  •  2 to pause/resume"
@@ -296,3 +302,8 @@ func _fmt(v: float, stepv: float) -> String:
 	elif stepv >= 0.01:
 		decimals = 2
 	return String.num(v, decimals)
+
+
+func _back_to_menu() -> void:
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://main_menu.tscn")

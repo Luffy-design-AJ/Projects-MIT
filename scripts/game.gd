@@ -26,10 +26,12 @@ func _ready() -> void:
 		canvas_layer.add_child(options_panel)
 		options_panel.setup(swarm_world)
 	if enemy1 != null:
-		match get_node("/root/GameConfig").choice:
-			get_node("/root/GameConfig").Choice.NONE:
+		var cfg = get_node("/root/GameConfig")
+		if cfg != null:
+			var c = cfg.choice
+			if c == cfg.Choice.NONE:
 				enemy1.type = Enemy.Type.PLACEHOLDER
-			get_node("/root/GameConfig").Choice.ASSASSIN:
+			elif c == cfg.Choice.ASSASSIN:
 				enemy1.type = Enemy.Type.ASSASSIN
 
 func _process(_delta: float) -> void:

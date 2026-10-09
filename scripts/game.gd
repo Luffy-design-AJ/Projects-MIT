@@ -25,14 +25,24 @@ func _ready() -> void:
 		options_panel = OptionsPanel.new()
 		canvas_layer.add_child(options_panel)
 		options_panel.setup(swarm_world)
-	if enemy1 != null:
+	var enemy2 = get_node_or_null("Enemy2") as Enemy
+	var enemy3 = get_node_or_null("Enemy3") as Enemy
+	var enemy4 = get_node_or_null("Enemy4") as Enemy
+	if enemy1 != null or enemy2 != null or enemy3 != null or enemy4 != null:
 		var cfg = get_node("/root/GameConfig")
 		if cfg != null:
 			var c = cfg.choice
 			if c == cfg.Choice.NONE:
-				enemy1.type = Enemy.Type.PLACEHOLDER
+				if enemy1 != null: enemy1.queue_free()
+				if enemy2 != null: enemy2.queue_free()
+				if enemy3 != null: enemy3.queue_free()
+				if enemy4 != null: enemy4.queue_free()
 			elif c == cfg.Choice.ASSASSIN:
-				enemy1.type = Enemy.Type.ASSASSIN
+				if enemy1 != null:
+					enemy1.type = Enemy.Type.ASSASSIN
+				if enemy2 != null: enemy2.queue_free()
+				if enemy3 != null: enemy3.queue_free()
+				if enemy4 != null: enemy4.queue_free()
 
 func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:

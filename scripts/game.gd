@@ -77,7 +77,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("cycle_progress"):
 		player.advance_progress()
 	elif event.is_action_pressed("cycle_stage_full"):
-		player.cycle_stage()
+		if player != null and player.bomb_unlocked:
+			player.bomb_mode = (player.bomb_mode + 1) % 2
 
 func _on_deliveries_changed(count: int) -> void:
 	if deliveries_label != null:

@@ -6,11 +6,12 @@ class_name Enemy
 ## the swarm, an enemy never commands an ant directly — it expresses through
 ## the shared pheromone fields and the swarm reacts via its own scoring.
 
-enum Type { PLACEHOLDER, ASSASSIN }
+enum Type { PLACEHOLDER, ASSASSIN, PREDATOR }
 
 ## Hades-style duel loop for the ASSASSIN: readable rhythm, dodgeable strikes,
 ## vulnerable recovery. It ignores the swarm and hunts only the player.
 enum DuelState { STALK, WINDUP, STRIKE, BACKOFF, RECOVER }
+enum PredState { SEARCH, CHARGE, RECOVER }
 
 @export var type: Type = Type.PLACEHOLDER
 
@@ -30,6 +31,15 @@ enum DuelState { STALK, WINDUP, STRIKE, BACKOFF, RECOVER }
 @export var backoff_time: float = 0.4
 @export var backoff_speed: float = 160.0
 @export var recover_time: float = 0.8
+
+@export_group("Predator")
+@export var pred_search_radius: float = 80.0
+@export var pred_cluster_threshold: int = 10
+@export var pred_search_speed: float = 60.0
+@export var pred_charge_speed: float = 320.0
+@export var pred_charge_damage: float = 15.0
+@export var pred_charge_duration: float = 0.6
+@export var pred_recover_time: float = 0.4
 ## Fear flare (WINDUP + STRIKE only): radius in cells and the absolute hunt
 ## value stamped at the centre each frame while flaring. Negative scatters
 ## ants; positive would draw them in. Set to 0 to disable the flare entirely
@@ -44,6 +54,11 @@ var duel_state: int = DuelState.STALK
 var state_timer: float = 0.0
 var aim_dir: Vector2 = Vector2.RIGHT
 var struck_this_strike: bool = false
+
+var pred_state: int = PredState.SEARCH
+var pred_state_timer: float = 0.0
+var pred_charge_dir: Vector2 = Vector2.RIGHT
+var pred_hit_set: Dictionary = {}
 
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
@@ -63,6 +78,8 @@ func _physics_process(delta: float) -> void:
 	match type:
 		Type.ASSASSIN:
 			_behave_assassin(delta)
+		Type.PREDATOR:
+			_behave_predator(delta)
 
 
 func take_damage(amount: float) -> void:

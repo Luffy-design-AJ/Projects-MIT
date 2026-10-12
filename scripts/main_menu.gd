@@ -10,6 +10,7 @@ func _ready() -> void:
 		option.clear()
 		option.add_item("No Enemy", 0)
 		option.add_item("Assassin", 1)
+		option.add_item("Predator", 2)
 		option.select(0)
 
 func _on_start_pressed() -> void:
@@ -17,6 +18,8 @@ func _on_start_pressed() -> void:
 		var id = option.get_selected_id()
 		if id == 1:
 			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.ASSASSIN
+		elif id == 2:
+			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.PREDATOR
 		else:
 			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.NONE
 	get_tree().change_scene_to_file("res://game.tscn")

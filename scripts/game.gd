@@ -43,6 +43,12 @@ func _ready() -> void:
 				if enemy2 != null: enemy2.queue_free()
 				if enemy3 != null: enemy3.queue_free()
 				if enemy4 != null: enemy4.queue_free()
+			elif c == cfg.Choice.PREDATOR:
+				if enemy1 != null:
+					enemy1.type = Enemy.Type.PREDATOR
+				if enemy2 != null: enemy2.queue_free()
+				if enemy3 != null: enemy3.queue_free()
+				if enemy4 != null: enemy4.queue_free()
 
 func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:

@@ -188,6 +188,8 @@ func _draw() -> void:
 	match type:
 		Type.ASSASSIN:
 			_draw_assassin()
+		Type.PREDATOR:
+			draw_circle(Vector2.ZERO, 16.0, Color(0.8, 0.3, 0.1, 0.95))
 		_:
 			draw_circle(Vector2.ZERO, 14.0, Color(0.55, 0.4, 0.75, 0.9))
 

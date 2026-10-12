@@ -16,7 +16,7 @@ enum PredState { SEARCH, CHARGE, RECOVER }
 @export var type: Type = Type.PLACEHOLDER
 
 @export_group("Shared")
-@export var max_hp: float = 100.0
+@export var max_hp: float = 150.0
 @export var counter_damage: float = 4.0
 @export var counter_damage_interval: float = 1.0
 

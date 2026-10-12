@@ -33,7 +33,7 @@ enum PredState { SEARCH, CHARGE, RECOVER }
 @export var recover_time: float = 0.8
 
 @export_group("Predator")
-@export var pred_search_radius: float = 60.0
+@export var pred_search_radius: float = 150.0
 @export var pred_cluster_threshold: int = 5
 @export var pred_search_speed: float = 60.0
 @export var pred_charge_speed: float = 320.0
@@ -213,6 +213,19 @@ func _behave_predator(delta: float) -> void:
 				if dist <= pred_search_radius:
 					sum += agent.global_position
 					count += 1
+			# Also check swarm density near player if player is in range
+			var player := _nearest_player()
+			if count < pred_cluster_threshold and player != null and global_position.distance_to(player.global_position) <= pred_search_radius * 1.2:
+				var pcount: int = 0
+				var psum := Vector2.ZERO
+				for agent in agents:
+					var dist := player.global_position.distance_to(agent.global_position)
+					if dist <= 90.0:
+						psum += agent.global_position
+						pcount += 1
+				if pcount >= pred_cluster_threshold:
+					sum = psum
+					count = pcount
 			if count >= pred_cluster_threshold:
 				var centroid = sum / float(count)
 				pred_charge_dir = (centroid - global_position)

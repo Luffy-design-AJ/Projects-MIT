@@ -252,7 +252,7 @@ func _behave_predator(delta: float) -> void:
 						pred_hit_set[id] = true
 						if randf() < pred_kill_chance:
 							if area.has_method("take_damage"):
-								area.take_damage(250.0)
+								area.take_damage(500.0)
 			if pred_state_timer <= 0.0:
 				pred_state = PredState.RECOVER
 				pred_state_timer = pred_recover_time

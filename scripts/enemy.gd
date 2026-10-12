@@ -59,6 +59,7 @@ var pred_state: int = PredState.SEARCH
 var pred_state_timer: float = 0.0
 var pred_charge_dir: Vector2 = Vector2.RIGHT
 var pred_hit_set: Dictionary = {}
+var pred_grace_elapsed: float = 0.0
 
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
@@ -203,6 +204,9 @@ func _behave_predator(delta: float) -> void:
 	if world == null:
 		return
 	pred_state_timer -= delta
+	pred_grace_elapsed += delta
+	if pred_grace_elapsed < 15.0:
+		return
 	match pred_state:
 		PredState.SEARCH:
 			var sum := Vector2.ZERO

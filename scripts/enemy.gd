@@ -34,7 +34,7 @@ enum PredState { SEARCH, CHARGE, RECOVER }
 
 @export_group("Predator")
 @export var pred_search_radius: float = 80.0
-@export var pred_cluster_threshold: int = 10
+@export var pred_cluster_threshold: int = 5
 @export var pred_search_speed: float = 60.0
 @export var pred_charge_speed: float = 320.0
 @export var pred_charge_damage: float = 15.0

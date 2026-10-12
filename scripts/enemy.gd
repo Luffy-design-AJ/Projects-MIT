@@ -60,6 +60,7 @@ var pred_state_timer: float = 0.0
 var pred_charge_dir: Vector2 = Vector2.RIGHT
 var pred_hit_set: Dictionary = {}
 var pred_grace_elapsed: float = 0.0
+var pred_kill_chance: float = 0.5
 
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
@@ -249,7 +250,9 @@ func _behave_predator(delta: float) -> void:
 					var id: int = area.get_instance_id()
 					if not pred_hit_set.has(id):
 						pred_hit_set[id] = true
-						area.take_damage(pred_charge_damage)
+						if randf() < pred_kill_chance:
+							if area.has_method("take_damage"):
+								area.take_damage(1000.0)
 			if pred_state_timer <= 0.0:
 				pred_state = PredState.RECOVER
 				pred_state_timer = pred_recover_time

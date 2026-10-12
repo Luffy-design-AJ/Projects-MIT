@@ -197,6 +197,49 @@ func _draw() -> void:
 ## State read at a glance: dim red stalking, brightening pulse + growing aim
 ## line and danger ring while winding up, hot flash on the lunge, muted hop
 ## backing off, dark and desaturated while recovering.
+
+func _behave_predator(delta: float) -> void:
+	var world := _get_world()
+	if world == null:
+		return
+	pred_state_timer -= delta
+	match pred_state:
+		PredState.SEARCH:
+			var sum := Vector2.ZERO
+			var count: int = 0
+			for area in get_overlapping_areas():
+				if area.is_in_group("swarm_agents"):
+					var dist := global_position.distance_to(area.global_position)
+					if dist <= pred_search_radius:
+						sum += area.global_position
+						count += 1
+			if count >= pred_cluster_threshold:
+				var centroid = sum / float(count)
+				pred_charge_dir = (centroid - global_position)
+				if pred_charge_dir.length() < 0.001:
+					pred_charge_dir = Vector2.RIGHT
+				else:
+					pred_charge_dir = pred_charge_dir.normalized()
+				pred_hit_set.clear()
+				pred_state = PredState.CHARGE
+				pred_state_timer = pred_charge_duration
+			else:
+				_move_clamped(pred_charge_dir * pred_search_speed * 0.1 * delta, world)
+		PredState.CHARGE:
+			_move_clamped(pred_charge_dir * pred_charge_speed * delta, world)
+			for area in get_overlapping_areas():
+				if area.is_in_group("swarm_agents") and area.has_method("take_damage"):
+					var id: int = area.get_instance_id()
+					if not pred_hit_set.has(id):
+						pred_hit_set[id] = true
+						area.take_damage(pred_charge_damage)
+			if pred_state_timer <= 0.0:
+				pred_state = PredState.RECOVER
+				pred_state_timer = pred_recover_time
+		PredState.RECOVER:
+			if pred_state_timer <= 0.0:
+				pred_state = PredState.SEARCH
+	queue_redraw()
 func _draw_assassin() -> void:
 	match duel_state:
 		DuelState.STALK:

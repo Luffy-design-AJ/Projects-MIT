@@ -207,12 +207,12 @@ func _behave_predator(delta: float) -> void:
 		PredState.SEARCH:
 			var sum := Vector2.ZERO
 			var count: int = 0
-			for area in get_overlapping_areas():
-				if area.is_in_group("swarm_agents"):
-					var dist := global_position.distance_to(area.global_position)
-					if dist <= pred_search_radius:
-						sum += area.global_position
-						count += 1
+			var agents = get_tree().get_nodes_in_group("swarm_agents")
+			for agent in agents:
+				var dist := global_position.distance_to(agent.global_position)
+				if dist <= pred_search_radius:
+					sum += agent.global_position
+					count += 1
 			if count >= pred_cluster_threshold:
 				var centroid = sum / float(count)
 				pred_charge_dir = (centroid - global_position)

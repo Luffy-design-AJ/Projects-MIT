@@ -140,7 +140,7 @@ func _header(list: VBoxContainer) -> void:
 	var title := Label.new()
 	title.text = "Options"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.add_theme_font_size_override("font_size", 20)
+	title.add_theme_font_size_override("font_size", 40)
 	head.add_child(title)
 
 	var reset := Button.new()
@@ -163,7 +163,7 @@ func _header(list: VBoxContainer) -> void:
 
 	var hint := Label.new()
 	hint.text = "Tab to close  •  2 to pause/resume"
-	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_font_size_override("font_size", 24)
 	list.add_child(hint)
 
 
@@ -173,7 +173,7 @@ func _section(list: VBoxContainer, title: String) -> void:
 	list.add_child(pad)
 	var label := Label.new()
 	label.text = title
-	label.add_theme_font_size_override("font_size", 17)
+	label.add_theme_font_size_override("font_size", 34)
 	list.add_child(label)
 	list.add_child(HSeparator.new())
 

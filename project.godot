@@ -15,6 +15,10 @@ run/main_scene="res://main_menu.tscn"
 config/features=PackedStringArray("4.3", "Forward Plus")
 config/icon="res://Swarm Game.icon.png"
 
+[autoload]
+
+GameConfig="res://scripts/game_config.gd"
+
 [input]
 
 move_up={
@@ -152,9 +156,6 @@ toggle_pause={
 , Object(InputEventJoypadButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"button_index":4,"pressure":0.0,"pressed":true,"script":null)
 ]
 }
-
-[autoload]
-GameConfig="res://scripts/game_config.gd"
 
 [rendering]
 

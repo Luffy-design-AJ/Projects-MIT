@@ -184,7 +184,6 @@ func _on_counter_damage_timeout() -> void:
 func _update_label() -> void:
 	if hp_label != null:
 		hp_label.text = "HP: %d / %d" % [int(hp), int(max_hp)]
-		hp_label.add_theme_font_size_override("font_size", 24)
 
 
 func _draw() -> void:

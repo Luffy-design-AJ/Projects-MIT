@@ -31,7 +31,7 @@ offset_left = 8.0
 offset_top = 8.0
 offset_right = 260.0
 offset_bottom = 34.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Ants: 0"
 
 [node name="StrengthLabel" type="Label" parent="CanvasLayer"]
@@ -39,7 +39,7 @@ offset_left = 8.0
 offset_top = 34.0
 offset_right = 260.0
 offset_bottom = 60.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Deliveries: 0"
 
 [node name="EminateModeLabel" type="Label" parent="CanvasLayer"]
@@ -47,7 +47,7 @@ offset_left = 8.0
 offset_top = 63.0
 offset_right = 357.0
 offset_bottom = 86.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Eminate: attract (E)"
 
 [node name="CastLabel" type="Label" parent="CanvasLayer"]
@@ -55,7 +55,7 @@ offset_left = 8.0
 offset_top = 86.0
 offset_right = 340.0
 offset_bottom = 112.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Cast: Direct Hunt (V)"
 
 [node name="NestPheromoneLabel" type="Label" parent="CanvasLayer"]
@@ -63,7 +63,7 @@ offset_left = 8.0
 offset_top = 112.0
 offset_right = 340.0
 offset_bottom = 138.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Nest pheromone: ON (N)"
 
 [node name="HPLabel" type="Label" parent="CanvasLayer"]
@@ -71,7 +71,7 @@ offset_left = 8.0
 offset_top = 138.0
 offset_right = 340.0
 offset_bottom = 164.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "HP: 100 / 100"
 
 [node name="BombModeLabel" type="Label" parent="CanvasLayer"]
@@ -79,7 +79,7 @@ offset_left = 8.0
 offset_top = 164.0
 offset_right = 340.0
 offset_bottom = 190.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Bomb: attract (H)"
 
 [node name="ProgressStageLabel" type="Label" parent="CanvasLayer"]
@@ -87,7 +87,7 @@ offset_left = 440.0
 offset_top = 8.0
 offset_right = 700.0
 offset_bottom = 34.0
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 32
 text = "Progress: SPRAY"
 
 [node name="SwarmWorld" type="Node2D" parent="."]

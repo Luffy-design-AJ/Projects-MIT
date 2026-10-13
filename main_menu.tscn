@@ -31,7 +31,7 @@ spacing = 16
 layout_mode = 2
 text = "Enemy Select"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 48
 
 [node name="OptionButton" type="OptionButton" parent="VBoxContainer"]
 layout_mode = 2

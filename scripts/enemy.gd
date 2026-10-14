@@ -6,13 +6,14 @@ class_name Enemy
 ## the swarm, an enemy never commands an ant directly — it expresses through
 ## the shared pheromone fields and the swarm reacts via its own scoring.
 
-enum Type { PLACEHOLDER, ASSASSIN, PREDATOR, FIREWALL }
+enum Type { PLACEHOLDER, ASSASSIN, PREDATOR, FIREWALL, BROODMOTHER, SIREN }
 
 ## Hades-style duel loop for the ASSASSIN: readable rhythm, dodgeable strikes,
 ## vulnerable recovery. It ignores the swarm and hunts only the player.
 enum DuelState { STALK, WINDUP, STRIKE, BACKOFF, RECOVER }
 enum PredState { SEARCH, CHARGE, RECOVER }
 enum FirewallState { IDLE, MOVE }
+enum SirenState { LURE, WINDUP, SNAP, RECOVER }
 
 @export var type: Type = Type.PLACEHOLDER:
 	set(value):
@@ -78,6 +79,34 @@ var pred_kill_chance: float = 0.125
 var firewall_state: int = FirewallState.MOVE
 var firewall_vel: Vector2 = Vector2.ZERO
 
+@export_group("Broodmother")
+## Heavy hijacker: paints home pheromone so returning foragers treat it as a
+## nest, then skims the food they bring. It does not kill ants — it starves
+## your economy. Very slow, very tanky.
+@export var broodmother_max_hp: float = 500.0
+@export var broodmother_speed: float = 12.0
+@export var broodmother_field_radius_cells: int = 6
+@export var broodmother_emit_per_sec: float = 3.0
+@export var broodmother_steal_radius_cells: float = 4.0
+@export var broodmother_steal_heal: float = 10.0
+var brood_stolen: int = 0
+
+@export_group("Siren")
+## Heavy bait: mimics the player's ATTRACT to gather the swarm, then snaps shut
+## and devours everything caught in the lure. Lure → windup → snap → recover.
+@export var siren_max_hp: float = 300.0
+@export var siren_speed: float = 14.0
+@export var siren_lure_radius_cells: int = 8
+@export var siren_lure_emit_per_sec: float = 4.0
+@export var siren_threshold: int = 6
+@export var siren_windup_time: float = 0.9
+@export var siren_snap_radius_cells: float = 5.0
+@export var siren_snap_damage: float = 1000.0
+@export var siren_recover_time: float = 1.6
+var siren_state: int = SirenState.LURE
+var siren_timer: float = 0.0
+var siren_snaps: int = 0
+
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
 
@@ -104,6 +133,18 @@ func _apply_type() -> void:
 		if not is_in_group("firewalls"):
 			add_to_group("firewalls")
 		_update_label()
+	elif type == Type.BROODMOTHER:
+		max_hp = broodmother_max_hp
+		hp = max_hp
+		brood_stolen = 0
+		_update_label()
+	elif type == Type.SIREN:
+		max_hp = siren_max_hp
+		hp = max_hp
+		siren_state = SirenState.LURE
+		siren_timer = 0.0
+		siren_snaps = 0
+		_update_label()
 
 
 func _physics_process(delta: float) -> void:
@@ -114,6 +155,10 @@ func _physics_process(delta: float) -> void:
 			_behave_predator(delta)
 		Type.FIREWALL:
 			_behave_firewall(delta)
+		Type.BROODMOTHER:
+			_behave_broodmother(delta)
+		Type.SIREN:
+			_behave_siren(delta)
 
 
 func take_damage(amount: float) -> void:
@@ -214,8 +259,14 @@ func _on_counter_damage_timeout() -> void:
 
 
 func _update_label() -> void:
-	if hp_label != null:
-		hp_label.text = "HP: %d / %d" % [int(hp), int(max_hp)]
+	if hp_label == null:
+		return
+	var text := "HP: %d / %d" % [int(hp), int(max_hp)]
+	if type == Type.BROODMOTHER:
+		text += "  Stolen: %d" % brood_stolen
+	elif type == Type.SIREN:
+		text += "  %s" % SirenState.keys()[siren_state]
+	hp_label.text = text
 
 
 func _draw() -> void:
@@ -226,6 +277,10 @@ func _draw() -> void:
 			draw_circle(Vector2.ZERO, 16.0, Color(0.8, 0.3, 0.1, 0.95))
 		Type.FIREWALL:
 			_draw_firewall()
+		Type.BROODMOTHER:
+			_draw_broodmother()
+		Type.SIREN:
+			_draw_siren()
 		_:
 			draw_circle(Vector2.ZERO, 14.0, Color(0.55, 0.4, 0.75, 0.9))
 
@@ -249,6 +304,87 @@ func _behave_firewall(delta: float) -> void:
 	var desired_vel := dir * firewall_speed
 	firewall_vel = firewall_vel.move_toward(desired_vel, firewall_accel * delta)
 	_move_clamped(firewall_vel * delta, world)
+
+
+## Heavy hijacker. Crawls toward the player while continuously painting home
+## pheromone around itself, so carrying foragers climb to it as if it were a
+## nest and deposit their food — which the Broodmother skims, healing itself
+## and starving the player's delivery economy. It never kills ants directly.
+func _behave_broodmother(delta: float) -> void:
+	var world := _get_world()
+	if world == null:
+		return
+	var player := _nearest_player()
+	if player != null:
+		var to_player: Vector2 = player.global_position - global_position
+		if to_player.length_squared() > 0.01:
+			_move_clamped(to_player.normalized() * broodmother_speed * delta, world)
+	# Hijack beacon — the swarm's own loyalty does the pulling.
+	world.stamp_home_field(global_position, broodmother_field_radius_cells, broodmother_emit_per_sec * delta)
+	# Skim deliveries from carrying ants that reach the beacon.
+	var steal_px: float = broodmother_steal_radius_cells * world.cell_size
+	var stole := false
+	for agent in get_tree().get_nodes_in_group("swarm_agents"):
+		if not is_instance_valid(agent) or not agent.carry:
+			continue
+		if global_position.distance_to(agent.global_position) <= steal_px:
+			agent.carry = false
+			brood_stolen += 1
+			hp = minf(hp + broodmother_steal_heal, max_hp)
+			stole = true
+	if stole:
+		_update_label()
+	queue_redraw()
+
+
+## Heavy bait. Mimics the player's ATTRACT to gather the swarm, telegraphs a
+## windup, then snaps shut and devours everything in the lure. Then it recovers,
+## giving the player a window to scatter the swarm or strike it.
+func _behave_siren(delta: float) -> void:
+	var world := _get_world()
+	if world == null:
+		return
+	siren_timer -= delta
+	var player := _nearest_player()
+	if player != null:
+		var to_player: Vector2 = player.global_position - global_position
+		if to_player.length_squared() > 0.01 and siren_state != SirenState.SNAP:
+			_move_clamped(to_player.normalized() * siren_speed * delta, world)
+	match siren_state:
+		SirenState.LURE:
+			world.stamp_lure_field(global_position, siren_lure_radius_cells, siren_lure_emit_per_sec * delta)
+			if _agents_within(world, siren_lure_radius_cells) >= siren_threshold:
+				siren_state = SirenState.WINDUP
+				siren_timer = siren_windup_time
+		SirenState.WINDUP:
+			# Keep baiting so the swarm does not wander off before the bite.
+			world.stamp_lure_field(global_position, siren_lure_radius_cells, siren_lure_emit_per_sec * delta)
+			if siren_timer <= 0.0:
+				_siren_snap(world)
+				siren_state = SirenState.RECOVER
+				siren_timer = siren_recover_time
+		SirenState.RECOVER:
+			if siren_timer <= 0.0:
+				siren_state = SirenState.LURE
+	queue_redraw()
+
+
+func _agents_within(world: SwarmWorld, radius_cells: float) -> int:
+	var r: float = radius_cells * world.cell_size
+	var n := 0
+	for agent in get_tree().get_nodes_in_group("swarm_agents"):
+		if is_instance_valid(agent) and global_position.distance_to(agent.global_position) <= r:
+			n += 1
+	return n
+
+
+func _siren_snap(world: SwarmWorld) -> void:
+	var r: float = siren_snap_radius_cells * world.cell_size
+	for agent in get_tree().get_nodes_in_group("swarm_agents"):
+		if is_instance_valid(agent) and global_position.distance_to(agent.global_position) <= r:
+			agent.take_damage(siren_snap_damage)
+	siren_snaps += 1
+	_update_label()
 
 
 func _behave_predator(delta: float) -> void:
@@ -335,3 +471,30 @@ func _draw_firewall() -> void:
 	draw_circle(Vector2.ZERO, 22.0, Color(0.25, 0.35, 0.6, 0.6))
 	draw_arc(Vector2.ZERO, 22.0, 0.0, TAU, 24, Color(0.45, 0.7, 1.0, 0.9), 3.0)
 	draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 16, Color(0.3, 0.5, 0.9, 0.7), 2.0)
+
+
+func _draw_broodmother() -> void:
+	var world := _get_world()
+	if world != null:
+		draw_arc(Vector2.ZERO, float(broodmother_field_radius_cells) * world.cell_size, 0.0, TAU, 48, Color(0.7, 0.9, 0.4, 0.16), 2.0)
+	draw_circle(Vector2.ZERO, 26.0, Color(0.34, 0.16, 0.38, 0.75))
+	draw_arc(Vector2.ZERO, 26.0, 0.0, TAU, 24, Color(0.85, 0.5, 1.0, 0.9), 3.0)
+	draw_arc(Vector2.ZERO, 18.0, 0.0, TAU, 16, Color(0.95, 0.75, 1.0, 0.7), 2.0)
+
+
+func _draw_siren() -> void:
+	var world := _get_world()
+	match siren_state:
+		SirenState.LURE:
+			draw_circle(Vector2.ZERO, 18.0, Color(0.18, 0.55, 0.5, 0.8))
+			if world != null:
+				draw_arc(Vector2.ZERO, float(siren_lure_radius_cells) * world.cell_size, 0.0, TAU, 48, Color(0.4, 0.95, 0.85, 0.16), 2.0)
+		SirenState.WINDUP:
+			var t := clampf(1.0 - siren_timer / maxf(siren_windup_time, 0.001), 0.0, 1.0)
+			draw_circle(Vector2.ZERO, 18.0, Color(0.95, 0.7, 0.2, 0.7 + 0.3 * t))
+			draw_arc(Vector2.ZERO, 18.0 + 22.0 * t, 0.0, TAU, 24, Color(1.0, 0.85, 0.4, 0.5 + 0.5 * t), 3.0)
+		SirenState.SNAP:
+			draw_circle(Vector2.ZERO, 24.0, Color(1.0, 0.32, 0.2, 0.95))
+		SirenState.RECOVER:
+			draw_circle(Vector2.ZERO, 16.0, Color(0.28, 0.34, 0.3, 0.6))
+	draw_arc(Vector2.ZERO, 20.0, 0.0, TAU, 24, Color(0.5, 0.9, 0.8, 0.8), 2.0)

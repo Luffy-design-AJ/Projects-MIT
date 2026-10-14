@@ -12,6 +12,8 @@ func _ready() -> void:
 		option.add_item("Assassin", 1)
 		option.add_item("Predator", 2)
 		option.add_item("Firewall", 3)
+		option.add_item("Broodmother", 4)
+		option.add_item("Siren", 5)
 		option.select(0)
 
 func _on_start_pressed() -> void:
@@ -23,6 +25,10 @@ func _on_start_pressed() -> void:
 			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.PREDATOR
 		elif id == 3:
 			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.FIREWALL
+		elif id == 4:
+			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.BROODMOTHER
+		elif id == 5:
+			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.SIREN
 		else:
 			get_node("/root/GameConfig").choice = get_node("/root/GameConfig").Choice.NONE
 	get_tree().change_scene_to_file("res://game.tscn")

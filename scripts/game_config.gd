@@ -1,5 +1,5 @@
 extends Node
 class_name GameConfig
 
-enum Choice { NONE, ASSASSIN, PREDATOR, FIREWALL }
+enum Choice { NONE, ASSASSIN, PREDATOR, FIREWALL, BROODMOTHER, SIREN }
 var choice: Choice = Choice.NONE

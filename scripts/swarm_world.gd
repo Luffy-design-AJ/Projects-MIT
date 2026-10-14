@@ -593,6 +593,25 @@ func eminate_at(world_pos: Vector2, mode: int) -> void:
 	hunt_field.stamp(cell.x, cell.y, eminate_radius_cells, strength, params_sat_cap)
 
 
+## Bait seam: an enemy paints positive hunt pheromone (the same channel the
+## player's ATTRACT uses) to lure foraging ants toward `world_pos`. Added each
+## frame while active, saturating at `params_sat_cap`, so it competes on equal
+## terms with the player's own attract just like any other stamp.
+func stamp_lure_field(world_pos: Vector2, radius_cells: int, strength: float) -> void:
+	var cell := _clamp_cell(world_to_cell(world_pos))
+	var hunt_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HUNT_PHER)
+	hunt_field.stamp(cell.x, cell.y, radius_cells, strength, params_sat_cap)
+
+
+## Hijack seam: an enemy paints home pheromone so returning (carrying) foragers
+## climb toward it as if it were a nest. Purely field-based — the ants' own
+## loyalty does the work; nothing here commands them.
+func stamp_home_field(world_pos: Vector2, radius_cells: int, strength: float) -> void:
+	var cell := _clamp_cell(world_to_cell(world_pos))
+	var home_field: ScalarField = field_manager.get_field(ScalarFieldManager.FIELD_HOME_PHER)
+	home_field.stamp(cell.x, cell.y, radius_cells, strength, params_sat_cap)
+
+
 ## Enemy effect seam: enemy → shared scalar field → swarm response. A negative
 ## `strength` lays a repulsive fear gradient (strongest at the centre, fading
 ## to zero at the rim) that ants climb out of; positive attracts. The enemy

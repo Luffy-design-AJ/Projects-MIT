@@ -91,7 +91,6 @@ theme_override_font_sizes/font_size = 16
 text = "Progress: SPRAY"
 
 [node name="SwarmWorld" type="Node2D" parent="."]
-visible = false
 script = ExtResource("4_swarm")
 
 [node name="FoodA" type="Node2D" parent="SwarmWorld"]

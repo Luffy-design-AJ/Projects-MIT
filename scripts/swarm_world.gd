@@ -104,7 +104,9 @@ const PIN_HOLD_CELLS := 2
 @export var params_forag_hwy_w: float = 1.2
 
 @export_group("Visualization (read-only)")
-@export var show_pheromone_vis: bool = true
+## Pheromone overlay is hidden by default; toggle it in-game under
+## Options > Visualization > "Show pheromones".
+@export var show_pheromone_vis: bool = false
 @export var vis_intensity: float = 0.8
 @export var vis_strength_ref: float = 0.5
 @export var vis_gamma: float = 1.0
@@ -135,6 +137,9 @@ var field_manager: ScalarFieldManager
 var ant_manager: AntManager
 var _sticky_timer: float = 0.0
 var _vis_timer: float = 0.0
+## Tracks whether the pheromone sprites were left visible last frame, so the
+## overlay can be hidden exactly once when it is toggled off mid-game.
+var _vis_shown: bool = false
 var _vis_layers: Array = []
 var _active_cast: Dictionary = {}
 var _cast_seq: int = 0
@@ -650,9 +655,14 @@ func _physics_process(delta: float) -> void:
 		if _vis_timer <= 0.0:
 			_vis_timer = VIS_REFRESH_INTERVAL
 			_update_vis()
-		queue_redraw()
-	elif show_overlay:
-		queue_redraw()
+		_vis_shown = true
+	elif _vis_shown:
+		# Toggled off at runtime: one pass to hide the overlay sprites.
+		_vis_shown = false
+		_update_vis()
+	# Walls, the arena border and the (player-following) nest are all drawn in
+	# `_draw`, so keep the canvas fresh even with the overlay hidden.
+	queue_redraw()
 
 
 ## Player emit: stamps the shared hunt field at the emitter's cell.

@@ -69,12 +69,25 @@ var pred_grace_elapsed: float = 0.0
 var pred_kill_chance: float = 0.125
 
 @export_group("Firewall")
+## Distortion enemy: attacks the player's CONTROL rather than ants or health.
+## Inside the field the swarm's pheromone reading is scrambled (zero-mean noise)
+## and the rim gives a soft outward nudge, so ants still enter but cannot hold
+## formation and parking the swarm there is a losing battle. Field effects do
+## not stack — only the strongest Firewall influences a given point.
 @export var firewall_max_hp: float = 350.0
 @export var firewall_speed: float = 20.0
 @export var firewall_accel: float = 200.0
 @export var firewall_field_radius: float = 95.0
-@export var firewall_distort_factor: float = 0.25
-@export var firewall_noise: float = 0.12
+## Core scramble: zero-mean jitter added to each candidate direction's final
+## score inside the field (0.55 = a large kick relative to the base bonuses).
+## Zero-mean and applied after the scoring nonlinearities, so unlike the old
+## one-sided attenuation it never biases direction — ants still follow the
+## attract in, they simply cannot hold a formation while inside.
+@export var firewall_noise: float = 0.55
+## Soft outward push felt near the field's rim (score units per cell step), so
+## the swarm's parked edge stays fuzzy instead of snapping to a hard disc. Kept
+## small so parking the swarm is effortful, not impossible.
+@export var firewall_rim_push: float = 0.4
 @export var firewall_falloff_pow: float = 1.5
 var firewall_state: int = FirewallState.MOVE
 var firewall_vel: Vector2 = Vector2.ZERO
@@ -466,8 +479,11 @@ func _draw_assassin() -> void:
 	draw_arc(Vector2.ZERO, 18.0, 0.0, TAU, 24, Color(0.95, 0.4, 0.4, 0.8), 2.0)
 
 func _draw_firewall() -> void:
-	# Faint ring telegraphs the distortion field's true extent.
-	draw_arc(Vector2.ZERO, firewall_field_radius, 0.0, TAU, 48, Color(0.4, 0.65, 1.0, 0.18), 2.0)
+	# Faint ring telegraphs the noise zone's true extent; concentric dim rings
+	# suggest the turbulence inside rather than a solid wall.
+	draw_arc(Vector2.ZERO, firewall_field_radius, 0.0, TAU, 48, Color(0.4, 0.65, 1.0, 0.20), 2.0)
+	draw_arc(Vector2.ZERO, firewall_field_radius * 0.66, 0.0, TAU, 40, Color(0.4, 0.65, 1.0, 0.10), 1.5)
+	draw_arc(Vector2.ZERO, firewall_field_radius * 0.33, 0.0, TAU, 32, Color(0.4, 0.65, 1.0, 0.10), 1.5)
 	draw_circle(Vector2.ZERO, 22.0, Color(0.25, 0.35, 0.6, 0.6))
 	draw_arc(Vector2.ZERO, 22.0, 0.0, TAU, 24, Color(0.45, 0.7, 1.0, 0.9), 3.0)
 	draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 16, Color(0.3, 0.5, 0.9, 0.7), 2.0)

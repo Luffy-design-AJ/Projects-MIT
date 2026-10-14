@@ -18,6 +18,11 @@ const VISUAL_LERP_PER_SEC := 6.0
 ## target rather than stopping short of it.
 const MARCH_RELEASE_CELLS := 2.0
 
+## How hard a Firewall's scramble perturbs an ant's per-candidate score. The
+## enemy supplies the 0..1 amplitude (scaled by field influence); this converts
+## it into score units comparable to the base and directional bonuses.
+const FW_SCORE_SCALE := 3.0
+
 var swarm_world: SwarmWorld = null
 
 var x: int = 0
@@ -159,6 +164,26 @@ func update_step() -> void:
 	var prev_x := x
 	var prev_y := y
 
+	# Firewall noise zone. Amplitude is sampled ONCE from the ant's own cell, then
+	# used as zero-mean jitter on each candidate's final score, so the field
+	# scrambles decisions without pulling ants any direction (the old per-cell
+	# attenuation biased them outward; this does not). A soft rim push keeps the
+	# parked boundary fuzzy.
+	var fw_here: Dictionary = world.firewall_influence_at(world.cell_to_world(Vector2i(x, y)))
+	var fw_noise := 0.0
+	var fw_rim_step := 0.0
+	var fw_center := Vector2.ZERO
+	var fw_cur_dist := 0.0
+	if not fw_here.is_empty():
+		var fw_inf: float = fw_here["influence"]
+		fw_noise = fw_here["noise"] * fw_inf
+		fw_center = fw_here["center"]
+		var fw_radius := maxf(fw_here["radius"], 0.001)
+		fw_cur_dist = world.cell_to_world(Vector2i(x, y)).distance_to(fw_center)
+		var edge := clampf(fw_cur_dist / fw_radius, 0.0, 1.0)
+		var rim_weight := clampf((edge - 0.4) / 0.6, 0.0, 1.0)
+		fw_rim_step = fw_here["rim_push"] * rim_weight / maxf(world.cell_size, 0.001)
+
 	var candidates: Array = []
 
 	for offset in range(-2, 3):
@@ -168,13 +193,10 @@ func update_step() -> void:
 		if world.blocked(nx, ny):
 			continue
 
-		# Firewall distortion: inside a distortion field the sampled pheromone
-		# is weakened and jittered, so this candidate's score is less reliable.
-		var cw: Vector2 = world.cell_to_world(Vector2i(nx, ny))
-		var hf: float = world.distort_pheromone(cw, home_field.get_cell(nx, ny))
-		var pf: float = world.distort_pheromone(cw, player_field.get_cell(nx, ny))
-		var ft: float = world.distort_pheromone(cw, foot_field.get_cell(nx, ny))
-		var pfr: float = world.distort_pheromone(cw, fresh_field.get_cell(nx, ny))
+		var hf: float = home_field.get_cell(nx, ny)
+		var pf: float = player_field.get_cell(nx, ny)
+		var ft: float = foot_field.get_cell(nx, ny)
+		var pfr: float = fresh_field.get_cell(nx, ny)
 
 		var hf_s: float = world.saturation_penalty(hf)
 		var pf_s: float = world.saturation_penalty(pf)
@@ -231,6 +253,20 @@ func update_step() -> void:
 			score += randf_range(-conf_noise, conf_noise)
 
 			score *= world.saturation_penalty(maxf(hf, maxf(ft, pf)))
+
+		# Firewall scramble: zero-mean jitter on the candidate's FINAL score. It is
+		# applied here, after every nonlinearity, so nothing can rectify it into a
+		# directional bias (scaling the raw samples would, via the saturation
+		# penalty, and would push ants outward again).
+		if fw_noise > 0.0:
+			score += randf_range(-fw_noise, fw_noise) * FW_SCORE_SCALE
+
+		# Soft outward push, strongest near the rim: reward candidates that move
+		# the ant farther from the field centre. Small enough that a committed
+		# attract can still hold the swarm inside.
+		if fw_rim_step > 0.0:
+			var cand_dist: float = world.cell_to_world(Vector2i(nx, ny)).distance_to(fw_center)
+			score += fw_rim_step * (cand_dist - fw_cur_dist)
 
 		score += randf_range(-noise, noise)
 		candidates.append({"d": d, "nx": nx, "ny": ny, "score": score})
@@ -562,7 +598,20 @@ func _step_direct() -> void:
 			command_wp.pop_front()
 			if not command_wp.is_empty():
 				goal = command_wp[0]
+	# Firewall influence at the ant's own cell. It degrades direct orders
+	# (CONTROL casts / Rally) as well as the pheromone response, since manual
+	# commands bypass the fields entirely.
+	var fw_here: Dictionary = swarm_world.firewall_influence_at(swarm_world.cell_to_world(Vector2i(x, y)))
+	var fw_direct_noise := 0.0
+	if not fw_here.is_empty():
+		fw_direct_noise = fw_here["noise"] * fw_here["influence"]
+
 	if command_wp.is_empty() and command_target == null and x == goal.x and y == goal.y:
+		# Arrived. Outside a field the ant simply holds. Inside a Firewall's
+		# noise zone a "parked" ant occasionally slips to a random neighbour, so
+		# a directly-commanded swarm cannot hold a tight formation there.
+		if fw_direct_noise > 0.0 and randf() < fw_direct_noise * 0.4:
+			_slip_step()
 		command_active = false
 		return
 
@@ -583,6 +632,8 @@ func _step_direct() -> void:
 		var turn := float(abs(_wrapped_delta(dir, i)))
 		var straight := 1.0 - turn / 4.0
 		var score := dist - straight * 4.0
+		if fw_direct_noise > 0.0:
+			score += randf_range(-fw_direct_noise, fw_direct_noise) * 6.0
 		if score < best_score:
 			best_score = score
 			best_d = i
@@ -597,6 +648,20 @@ func _step_direct() -> void:
 	if command_target != null and not is_instance_valid(command_target):
 		command_target = null
 		command_active = false
+
+
+## A single random step to a free neighbour, used by `_step_direct` to let a
+## parked ant slip off its post inside a Firewall's noise zone.
+func _slip_step() -> void:
+	var opts: Array[int] = []
+	for i in range(DIRS_8.size()):
+		if not swarm_world.blocked(x + DIRS_8[i].x, y + DIRS_8[i].y):
+			opts.append(i)
+	if opts.is_empty():
+		return
+	dir = opts[randi() % opts.size()]
+	x += DIRS_8[dir].x
+	y += DIRS_8[dir].y
 
 
 ## Flee steering: choose the step (of the 8 neighbours) that maximises the

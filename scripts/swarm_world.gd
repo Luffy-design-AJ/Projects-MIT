@@ -1093,13 +1093,14 @@ func get_field(field_name: String) -> ScalarField:
 	return field_manager.get_field(field_name)
 
 
-## Applies Firewall distortion to a sampled pheromone value at `world_pos`:
-## weaken it toward the field's `firewall_distort_factor` and add proportional
-## noise, so the swarm's response inside the field becomes less reliable. With
-## no field present the value passes through untouched.
-func distort_pheromone(world_pos: Vector2, value: float) -> float:
+## Firewall query seam. Returns the strongest distortion field's influence at
+## `world_pos`, or an empty dictionary when outside every field. Effects do not
+## stack: only the single most-influential Firewall is returned. The caller uses
+## `influence` to scale zero-mean noise (sampled once so it cannot bias
+## direction) and `rim_push` for a soft outward nudge near the edge.
+func firewall_influence_at(world_pos: Vector2) -> Dictionary:
 	if _firewalls.is_empty():
-		return value
+		return {}
 	var best: float = 0.0
 	var source: Node = null
 	for fw in _firewalls:
@@ -1116,10 +1117,14 @@ func distort_pheromone(world_pos: Vector2, value: float) -> float:
 			best = influence
 			source = fw
 	if source == null or best <= 0.0:
-		return value
-	var weakened: float = value * lerpf(1.0, source.firewall_distort_factor, best)
-	var jitter: float = absf(weakened) * source.firewall_noise * best
-	return weakened + randf_range(-jitter, jitter)
+		return {}
+	return {
+		"influence": best,
+		"center": source.global_position,
+		"radius": source.firewall_field_radius,
+		"noise": source.firewall_noise,
+		"rim_push": source.firewall_rim_push,
+	}
 
 
 func notify_delivery() -> void:

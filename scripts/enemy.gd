@@ -6,14 +6,19 @@ class_name Enemy
 ## the swarm, an enemy never commands an ant directly — it expresses through
 ## the shared pheromone fields and the swarm reacts via its own scoring.
 
-enum Type { PLACEHOLDER, ASSASSIN, PREDATOR }
+enum Type { PLACEHOLDER, ASSASSIN, PREDATOR, FIREWALL }
 
 ## Hades-style duel loop for the ASSASSIN: readable rhythm, dodgeable strikes,
 ## vulnerable recovery. It ignores the swarm and hunts only the player.
 enum DuelState { STALK, WINDUP, STRIKE, BACKOFF, RECOVER }
 enum PredState { SEARCH, CHARGE, RECOVER }
+enum FirewallState { IDLE, MOVE }
 
-@export var type: Type = Type.PLACEHOLDER
+@export var type: Type = Type.PLACEHOLDER:
+	set(value):
+		type = value
+		if is_node_ready():
+			_apply_type()
 
 @export_group("Shared")
 @export var max_hp: float = 150.0
@@ -62,6 +67,17 @@ var pred_hit_set: Dictionary = {}
 var pred_grace_elapsed: float = 0.0
 var pred_kill_chance: float = 0.125
 
+@export_group("Firewall")
+@export var firewall_max_hp: float = 350.0
+@export var firewall_speed: float = 20.0
+@export var firewall_accel: float = 200.0
+@export var firewall_field_radius: float = 95.0
+@export var firewall_distort_factor: float = 0.25
+@export var firewall_noise: float = 0.12
+@export var firewall_falloff_pow: float = 1.5
+var firewall_state: int = FirewallState.MOVE
+var firewall_vel: Vector2 = Vector2.ZERO
+
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
 
@@ -74,6 +90,20 @@ func _ready() -> void:
 		counter_damage_timer.wait_time = counter_damage_interval
 		counter_damage_timer.timeout.connect(_on_counter_damage_timeout)
 		counter_damage_timer.start()
+	_apply_type()
+
+
+## Applies configuration that depends on `type`. Called from `_ready()` and
+## whenever `type` changes after the node is in the tree (e.g. `game.gd`
+## selects the enemy once the scene, and therefore this node, is already ready).
+func _apply_type() -> void:
+	if type == Type.FIREWALL:
+		max_hp = firewall_max_hp
+		hp = max_hp
+		firewall_vel = Vector2.ZERO
+		if not is_in_group("firewalls"):
+			add_to_group("firewalls")
+		_update_label()
 
 
 func _physics_process(delta: float) -> void:
@@ -82,6 +112,8 @@ func _physics_process(delta: float) -> void:
 			_behave_assassin(delta)
 		Type.PREDATOR:
 			_behave_predator(delta)
+		Type.FIREWALL:
+			_behave_firewall(delta)
 
 
 func take_damage(amount: float) -> void:
@@ -192,6 +224,8 @@ func _draw() -> void:
 			_draw_assassin()
 		Type.PREDATOR:
 			draw_circle(Vector2.ZERO, 16.0, Color(0.8, 0.3, 0.1, 0.95))
+		Type.FIREWALL:
+			_draw_firewall()
 		_:
 			draw_circle(Vector2.ZERO, 14.0, Color(0.55, 0.4, 0.75, 0.9))
 
@@ -199,6 +233,23 @@ func _draw() -> void:
 ## State read at a glance: dim red stalking, brightening pulse + growing aim
 ## line and danger ring while winding up, hot flash on the lunge, muted hop
 ## backing off, dark and desaturated while recovering.
+
+func _behave_firewall(delta: float) -> void:
+	var world := _get_world()
+	var player := _nearest_player()
+	if world == null:
+		return
+	var target: Vector2 = global_position
+	if player != null:
+		target = player.global_position
+	var to_target: Vector2 = target - global_position
+	var dir := Vector2.ZERO
+	if to_target.length_squared() > 0.01:
+		dir = to_target.normalized()
+	var desired_vel := dir * firewall_speed
+	firewall_vel = firewall_vel.move_toward(desired_vel, firewall_accel * delta)
+	_move_clamped(firewall_vel * delta, world)
+
 
 func _behave_predator(delta: float) -> void:
 	var world := _get_world()
@@ -277,3 +328,10 @@ func _draw_assassin() -> void:
 		DuelState.RECOVER:
 			draw_circle(Vector2.ZERO, 12.0, Color(0.34, 0.17, 0.17, 0.65))
 	draw_arc(Vector2.ZERO, 18.0, 0.0, TAU, 24, Color(0.95, 0.4, 0.4, 0.8), 2.0)
+
+func _draw_firewall() -> void:
+	# Faint ring telegraphs the distortion field's true extent.
+	draw_arc(Vector2.ZERO, firewall_field_radius, 0.0, TAU, 48, Color(0.4, 0.65, 1.0, 0.18), 2.0)
+	draw_circle(Vector2.ZERO, 22.0, Color(0.25, 0.35, 0.6, 0.6))
+	draw_arc(Vector2.ZERO, 22.0, 0.0, TAU, 24, Color(0.45, 0.7, 1.0, 0.9), 3.0)
+	draw_arc(Vector2.ZERO, 16.0, 0.0, TAU, 16, Color(0.3, 0.5, 0.9, 0.7), 2.0)

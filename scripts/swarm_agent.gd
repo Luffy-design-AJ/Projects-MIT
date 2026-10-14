@@ -168,10 +168,13 @@ func update_step() -> void:
 		if world.blocked(nx, ny):
 			continue
 
-		var hf: float = home_field.get_cell(nx, ny)
-		var pf: float = player_field.get_cell(nx, ny)
-		var ft: float = foot_field.get_cell(nx, ny)
-		var pfr: float = fresh_field.get_cell(nx, ny)
+		# Firewall distortion: inside a distortion field the sampled pheromone
+		# is weakened and jittered, so this candidate's score is less reliable.
+		var cw: Vector2 = world.cell_to_world(Vector2i(nx, ny))
+		var hf: float = world.distort_pheromone(cw, home_field.get_cell(nx, ny))
+		var pf: float = world.distort_pheromone(cw, player_field.get_cell(nx, ny))
+		var ft: float = world.distort_pheromone(cw, foot_field.get_cell(nx, ny))
+		var pfr: float = world.distort_pheromone(cw, fresh_field.get_cell(nx, ny))
 
 		var hf_s: float = world.saturation_penalty(hf)
 		var pf_s: float = world.saturation_penalty(pf)

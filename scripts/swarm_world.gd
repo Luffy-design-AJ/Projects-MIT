@@ -149,6 +149,9 @@ var _rally_pos: Vector2 = Vector2.ZERO
 var _bomb_cell: Vector2i = Vector2i(-1, -1)
 var _bomb_mode: int = 0
 var _bomb_timer: float = 0.0
+## Firewall enemies (group "firewalls"), refreshed each physics tick so the
+## distortion query stays cheap. Empty when no firewall is present.
+var _firewalls: Array = []
 
 const VIS_REFRESH_INTERVAL: float = 0.1
 
@@ -499,6 +502,7 @@ func _zero_all_fields() -> void:
 func _physics_process(delta: float) -> void:
 	if _pheromone_locked:
 		_zero_all_fields()
+	_firewalls = get_tree().get_nodes_in_group("firewalls")
 	# CONTROL rally order: follow the (moving) rally point once it is active.
 	if _rally_active and command_mode == COMMAND_CONTROL:
 		if ant_manager != null:
@@ -1068,6 +1072,35 @@ func saturation_penalty(v: float) -> float:
 
 func get_field(field_name: String) -> ScalarField:
 	return field_manager.get_field(field_name)
+
+
+## Applies Firewall distortion to a sampled pheromone value at `world_pos`:
+## weaken it toward the field's `firewall_distort_factor` and add proportional
+## noise, so the swarm's response inside the field becomes less reliable. With
+## no field present the value passes through untouched.
+func distort_pheromone(world_pos: Vector2, value: float) -> float:
+	if _firewalls.is_empty():
+		return value
+	var best: float = 0.0
+	var source: Node = null
+	for fw in _firewalls:
+		if not is_instance_valid(fw):
+			continue
+		var radius: float = fw.firewall_field_radius
+		if radius <= 0.0:
+			continue
+		var dist: float = world_pos.distance_to(fw.global_position)
+		if dist >= radius:
+			continue
+		var influence: float = pow(1.0 - dist / radius, fw.firewall_falloff_pow)
+		if influence > best:
+			best = influence
+			source = fw
+	if source == null or best <= 0.0:
+		return value
+	var weakened: float = value * lerpf(1.0, source.firewall_distort_factor, best)
+	var jitter: float = absf(weakened) * source.firewall_noise * best
+	return weakened + randf_range(-jitter, jitter)
 
 
 func notify_delivery() -> void:

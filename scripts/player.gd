@@ -340,7 +340,51 @@ func _physics_process(delta: float) -> void:
 
 
 
+	# Walls are data (`SwarmWorld.solid`), not physics bodies, so `move_and_slide`
+	# alone would let the player walk through a generated level. Resolve each
+	# axis against the grid so the player slides along walls like the enemies do.
+	var pre_move := global_position
 	move_and_slide()
+	_resolve_wall_collision(pre_move)
+
+
+## Per-axis wall slide against the procedural grid. No-op in sandbox mode (where
+## walls do not exist), so the original sandbox movement is untouched. Normal
+## movement slides along walls; a fast dash is swept so it cannot tunnel through
+## a one-cell-thick wall.
+func _resolve_wall_collision(prev: Vector2) -> void:
+	if swarm_world == null or not swarm_world.procedural:
+		return
+	var pos := global_position
+	var step := (pos - prev).length()
+	if step > swarm_world.cell_size * 0.6:
+		global_position = _sweep_free(prev, pos)
+		return
+	var cell_x: Vector2i = swarm_world.world_to_cell(Vector2(pos.x, prev.y))
+	if swarm_world.blocked(cell_x.x, cell_x.y):
+		pos.x = prev.x
+	var cell_y: Vector2i = swarm_world.world_to_cell(Vector2(pos.x, pos.y))
+	if swarm_world.blocked(cell_y.x, cell_y.y):
+		pos.y = prev.y
+	global_position = pos
+
+
+## Marches from `from` to `to` and returns the last unblocked point.
+func _sweep_free(from: Vector2, to: Vector2) -> Vector2:
+	var seg := to - from
+	var dist := seg.length()
+	if dist < 0.001:
+		return to
+	var steps := int(ceil(dist / maxf(1.0, swarm_world.cell_size * 0.5)))
+	var dir := seg / dist
+	var last_ok := from
+	for i in range(1, steps + 1):
+		var p := from + dir * (dist * float(i) / float(steps))
+		var cell: Vector2i = swarm_world.world_to_cell(p)
+		if swarm_world.blocked(cell.x, cell.y):
+			break
+		last_ok = p
+	return last_ok
 
 
 ## Returns [direction: Vector2, target: Node2D (or null)] for the active aim mode.

@@ -25,48 +25,77 @@ func _ready() -> void:
 		options_panel = OptionsPanel.new()
 		canvas_layer.add_child(options_panel)
 		options_panel.setup(swarm_world)
+	var cfg = get_node_or_null("/root/GameConfig")
+	if cfg != null and cfg.mode == cfg.Mode.PROCEDURAL:
+		_setup_procedural(cfg)
+	else:
+		_setup_sandbox(cfg)
+
+
+## Procedural mode: the swarm world has already generated the layout, so here we
+## only drop the player onto its spawn cell and spawn the selected combo.
+func _setup_procedural(cfg) -> void:
+	if player != null and swarm_world.level != null:
+		player.global_position = swarm_world.cell_to_world(swarm_world.level.spawn_cell)
+	for slot in ["Enemy1", "Enemy2", "Enemy3", "Enemy4"]:
+		var placeholder = get_node_or_null(slot)
+		if placeholder != null:
+			placeholder.queue_free()
+	if swarm_world.level == null:
+		return
+	var enemy_scene: PackedScene = load("res://enemy.tscn")
+	for entry in swarm_world.level.enemies:
+		var enemy: Enemy = enemy_scene.instantiate()
+		enemy.type = int(entry["type"])
+		add_child(enemy)
+		enemy.global_position = swarm_world.cell_to_world(entry["cell"])
+
+
+## Sandbox mode: the original single-enemy selection on the hand-authored arena.
+func _setup_sandbox(cfg) -> void:
 	var enemy2 = get_node_or_null("Enemy2") as Enemy
 	var enemy3 = get_node_or_null("Enemy3") as Enemy
 	var enemy4 = get_node_or_null("Enemy4") as Enemy
-	if enemy1 != null or enemy2 != null or enemy3 != null or enemy4 != null:
-		var cfg = get_node("/root/GameConfig")
-		if cfg != null:
-			var c = cfg.choice
-			if c == cfg.Choice.NONE:
-				if enemy1 != null: enemy1.queue_free()
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
-			elif c == cfg.Choice.ASSASSIN:
-				if enemy1 != null:
-					enemy1.type = Enemy.Type.ASSASSIN
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
-			elif c == cfg.Choice.PREDATOR:
-				if enemy1 != null:
-					enemy1.type = Enemy.Type.PREDATOR
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
-			elif c == cfg.Choice.FIREWALL:
-				if enemy1 != null:
-					enemy1.type = Enemy.Type.FIREWALL
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
-			elif c == cfg.Choice.BROODMOTHER:
-				if enemy1 != null:
-					enemy1.type = Enemy.Type.BROODMOTHER
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
-			elif c == cfg.Choice.SIREN:
-				if enemy1 != null:
-					enemy1.type = Enemy.Type.SIREN
-				if enemy2 != null: enemy2.queue_free()
-				if enemy3 != null: enemy3.queue_free()
-				if enemy4 != null: enemy4.queue_free()
+	if enemy1 == null and enemy2 == null and enemy3 == null and enemy4 == null:
+		return
+	if cfg == null:
+		return
+	var c = cfg.choice
+	if c == cfg.Choice.NONE:
+		if enemy1 != null: enemy1.queue_free()
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
+	elif c == cfg.Choice.ASSASSIN:
+		if enemy1 != null:
+			enemy1.type = Enemy.Type.ASSASSIN
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
+	elif c == cfg.Choice.PREDATOR:
+		if enemy1 != null:
+			enemy1.type = Enemy.Type.PREDATOR
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
+	elif c == cfg.Choice.FIREWALL:
+		if enemy1 != null:
+			enemy1.type = Enemy.Type.FIREWALL
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
+	elif c == cfg.Choice.BROODMOTHER:
+		if enemy1 != null:
+			enemy1.type = Enemy.Type.BROODMOTHER
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
+	elif c == cfg.Choice.SIREN:
+		if enemy1 != null:
+			enemy1.type = Enemy.Type.SIREN
+		if enemy2 != null: enemy2.queue_free()
+		if enemy3 != null: enemy3.queue_free()
+		if enemy4 != null: enemy4.queue_free()
 
 func _process(_delta: float) -> void:
 	if ants_label != null and swarm_world != null:

@@ -122,6 +122,15 @@ var food_sources: Array = []
 var deliveries: int = 0
 var show_overlay: bool = false
 
+## --- Procedural level (only populated when GameConfig.mode == PROCEDURAL) ---
+var procedural: bool = false
+var level: LevelGenerator.Level = null
+var level_seed: int = 0
+var combo: Array = []
+## Pre-baked wall rectangles (world space), rebuilt once per generation so the
+## draw pass never walks the grid.
+var _wall_rects: Array = []
+
 var field_manager: ScalarFieldManager
 var ant_manager: AntManager
 var _sticky_timer: float = 0.0
@@ -157,6 +166,13 @@ const VIS_REFRESH_INTERVAL: float = 0.1
 
 
 func _ready() -> void:
+	var cfg: GameConfig = get_node_or_null("/root/GameConfig") as GameConfig
+	procedural = cfg != null and cfg.mode == cfg.Mode.PROCEDURAL
+	if procedural:
+		cell_size = cfg.cell_size
+		if cfg.arena_size != Vector2.ZERO:
+			arena_size = cfg.arena_size
+
 	cols = maxi(1, int(arena_size.x / cell_size))
 	rows = maxi(1, int(arena_size.y / cell_size))
 	origin = arena_center - arena_size * 0.5
@@ -169,12 +185,55 @@ func _ready() -> void:
 
 	nest_cell = world_to_cell(nest_position)
 
+	if procedural:
+		_generate_level(cfg)
+
 	for food in get_tree().get_nodes_in_group("food_sources"):
 		food_sources.append(food)
 
 	ant_manager = AntManager.new()
 	add_child(ant_manager)
 	ant_manager.setup(self, ant_count)
+
+
+## Builds the procedural level, installs its walls into the shared solid grid
+## and replaces the hand-placed food with the level's own piles. Runs during
+## `_ready` (before the ant manager) so the colony starts on the spawn cell.
+func _generate_level(cfg: GameConfig) -> void:
+	combo = cfg.enemies.duplicate()
+	level_seed = cfg.level_seed
+	var params: Dictionary = cfg.gen_params.duplicate(true)
+	level = LevelGenerator.generate(cols, rows, level_seed, combo, params)
+	field_manager.solid = level.solid
+	_build_wall_rects()
+	for f in get_tree().get_nodes_in_group("food_sources"):
+		f.remove_from_group("food_sources")
+		f.queue_free()
+	for entry in level.food:
+		var food := FoodSource.new()
+		food.position = cell_to_world(entry["cell"])
+		food.amount = int(entry["amount"])
+		add_child(food)
+	nest_cell = level.spawn_cell
+
+
+## Merges each row's solid runs into a single rectangle so the draw pass never
+## walks the grid cell-by-cell.
+func _build_wall_rects() -> void:
+	_wall_rects.clear()
+	if field_manager == null or field_manager.solid.size() < cols * rows:
+		return
+	for y in range(rows):
+		var x: int = 0
+		while x < cols:
+			if field_manager.solid[y * cols + x] == 1:
+				var run_start: int = x
+				while x < cols and field_manager.solid[y * cols + x] == 1:
+					x += 1
+				var pos := Vector2(origin.x + float(run_start) * cell_size, origin.y + float(y) * cell_size)
+				_wall_rects.append(Rect2(pos, Vector2(float(x - run_start) * cell_size, cell_size)))
+			else:
+				x += 1
 
 
 ## The nest source follows this node (e.g. the player). Its position is the
@@ -959,6 +1018,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
+	if not _wall_rects.is_empty():
+		_draw_walls()
 	if show_overlay:
 		_draw_field(ScalarFieldManager.FIELD_HOME_PHER, Color(0.56, 0.75, 0.29), 0.02)
 		_draw_field(ScalarFieldManager.FIELD_FOOT_TRAIL, Color(0.29, 0.78, 0.83), 0.015)
@@ -968,6 +1029,14 @@ func _draw() -> void:
 	_draw_nest()
 	for food in food_sources:
 		_draw_food(food)
+
+
+func _draw_walls() -> void:
+	var fill := Color(0.10, 0.11, 0.15, 1.0)
+	var edge := Color(0.24, 0.27, 0.34, 1.0)
+	for rect in _wall_rects:
+		draw_rect(rect, fill)
+		draw_rect(rect, edge, false, 1.0)
 
 
 func _setup_vis() -> void:

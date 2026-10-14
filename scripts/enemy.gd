@@ -246,12 +246,44 @@ func _enter_state(next: int, duration: float) -> void:
 	state_timer = duration
 
 
-## Kinematic step kept inside the arena rectangle (small margin).
+## Kinematic step kept inside the arena rectangle and, in procedural levels, out
+## of walls. Movement is resolved per-axis so an enemy slides along a wall
+## instead of sticking to it. Sandbox behaviour is byte-identical to before; the
+## AI above this function is unchanged in both modes.
 func _move_clamped(step: Vector2, world: SwarmWorld) -> void:
-	global_position += step
+	if world == null:
+		global_position += step
+		return
+	if not world.procedural:
+		global_position += step
+		_clamp_to_arena(world)
+		return
+	var cur := global_position
+	var target := cur + step
+	var nx := target.x
+	if _pos_blocked(world, Vector2(nx, cur.y)):
+		nx = cur.x
+	var ny := target.y
+	if _pos_blocked(world, Vector2(cur.x, ny)):
+		ny = cur.y
+	if _pos_blocked(world, Vector2(nx, ny)):
+		nx = cur.x
+		ny = cur.y
+	global_position = Vector2(nx, ny)
+	_clamp_to_arena(world)
+
+
+func _clamp_to_arena(world: SwarmWorld) -> void:
 	var margin := 16.0
 	global_position.x = clampf(global_position.x, world.origin.x + margin, world.origin.x + world.arena_size.x - margin)
 	global_position.y = clampf(global_position.y, world.origin.y + margin, world.origin.y + world.arena_size.y - margin)
+
+
+func _pos_blocked(world: SwarmWorld, pos: Vector2) -> bool:
+	if world == null:
+		return false
+	var cell := world.world_to_cell(pos)
+	return world.blocked(cell.x, cell.y)
 
 
 func _nearest_player() -> Node2D:

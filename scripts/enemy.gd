@@ -158,6 +158,12 @@ func _apply_type() -> void:
 		siren_timer = 0.0
 		siren_snaps = 0
 		_update_label()
+	# The two lure enemies are swarm-immune: the swarm is their prey, so it must
+	# not also be what kills them. It still walks into their fields (those are
+	# pheromone, not targeting) but its attacks and targeting ignore them. Only
+	# the player's melee can finish them. The duelists and Firewall stay
+	# swarm-killable.
+	swarm_immune = type == Type.BROODMOTHER or type == Type.SIREN
 
 
 func _physics_process(delta: float) -> void:

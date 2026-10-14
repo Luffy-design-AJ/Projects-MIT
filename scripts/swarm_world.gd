@@ -386,12 +386,27 @@ func _issue_bomb_attract() -> void:
 			_issue_direct(agent, _bomb_cell, null)
 
 
+## The enemies the swarm is allowed to engage: `swarm_targets` minus any that
+## are `swarm_immune`. Lure enemies (Broodmother, Siren) are excluded here, so
+## the swarm never targets them — while the player's melee keeps reading the raw
+## "swarm_targets" group and can still finish them.
+func swarm_targets() -> Array:
+	var out: Array = []
+	for t in get_tree().get_nodes_in_group("swarm_targets"):
+		if not is_instance_valid(t):
+			continue
+		if t.swarm_immune:
+			continue
+		out.append(t)
+	return out
+
+
 ## CARNAGE hook: every ant re-targets the nearest enemy each step (via
 ## `nearest_target_to`), steering straight at it until it dies, then the next.
 func nearest_target_to(world_pos: Vector2) -> Node2D:
 	var best: Node2D = null
 	var best_dist := INF
-	for t in get_tree().get_nodes_in_group("swarm_targets"):
+	for t in swarm_targets():
 		if not is_instance_valid(t):
 			continue
 		var dist := world_pos.distance_squared_to(t.global_position)
@@ -455,7 +470,7 @@ func cast_pinned_target() -> Node2D:
 		return null
 	var best: Node2D = null
 	var best_d := INF
-	for t in get_tree().get_nodes_in_group("swarm_targets"):
+	for t in swarm_targets():
 		if not is_instance_valid(t):
 			continue
 		# A couple of cells of tolerance so ordinary enemy jitter does not drop
@@ -475,7 +490,7 @@ func nearest_target_within_radius(world_pos: Vector2, radius_cells: float) -> No
 	var best: Node2D = null
 	var best_dist := INF
 	var r := radius_cells * cell_size
-	for t in get_tree().get_nodes_in_group("swarm_targets"):
+	for t in swarm_targets():
 		if not is_instance_valid(t):
 			continue
 		var dist := world_pos.distance_squared_to(t.global_position)
@@ -672,7 +687,9 @@ func cast_hunt(world_pos: Vector2, aim_dir: Vector2, pattern: String, target: No
 ## cast that merely passes an enemy still halts there and attacks. Returns
 ## Vector2i(-1, -1) when no enemy is near the path -> the march runs long.
 func _resolve_stop_cell(start: Vector2i, aim_dir: Vector2, target: Node2D = null) -> Vector2i:
-	if target != null and is_instance_valid(target) and target.is_in_group("swarm_targets"):
+	# A swarm-immune enemy is not a valid stop: the marching swarm would only
+	# pile onto something it cannot hurt, so the cast passes it by instead.
+	if target != null and is_instance_valid(target) and target.is_in_group("swarm_targets") and not target.swarm_immune:
 		return _clamp_cell(world_to_cell(target.global_position))
 	var dir_n := aim_dir.normalized()
 	if dir_n == Vector2.ZERO:
@@ -683,7 +700,7 @@ func _resolve_stop_cell(start: Vector2i, aim_dir: Vector2, target: Node2D = null
 	var margin := float(STOP_CORRIDOR_MARGIN_CELLS)
 	var best := Vector2i(-1, -1)
 	var best_along := INF
-	for t in get_tree().get_nodes_in_group("swarm_targets"):
+	for t in swarm_targets():
 		if not is_instance_valid(t):
 			continue
 		var cell := _clamp_cell(world_to_cell(t.global_position))
@@ -870,7 +887,7 @@ func _stamp_loop_return(start: Vector2i, far: Vector2i, dir_n: Vector2, perp: Ve
 ## A hunt burst on every enemy target plus a scent line toward each, so the
 ## swarm splits into streams toward every target.
 func _stamp_multi_hunt(start: Vector2i, dir_n: Vector2) -> void:
-	var targets := get_tree().get_nodes_in_group("swarm_targets")
+	var targets := swarm_targets()
 	if targets.is_empty():
 		_stamp_direct_hunt(start, dir_n)
 		return

@@ -699,8 +699,13 @@ func _clamp_cell(c: Vector2i) -> Vector2i:
 
 func _resolve_combat(delta: float) -> void:
 	for area in get_overlapping_areas():
-		if area.is_in_group("swarm_targets") and area.has_method("take_damage"):
-			area.take_damage(DOT_PER_SECOND * delta)
+		if not area.is_in_group("swarm_targets") or not area.has_method("take_damage"):
+			continue
+		# Lure enemies (Broodmother, Siren) are immune to the swarm: it cannot
+		# kill the very thing it is drawn to. The player's melee is the answer.
+		if area.swarm_immune:
+			continue
+		area.take_damage(DOT_PER_SECOND * delta)
 
 
 func take_damage(amount: float) -> void:

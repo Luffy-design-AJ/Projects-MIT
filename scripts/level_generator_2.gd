@@ -43,13 +43,13 @@ const DEFAULTS := {
 	# Archetype set by _apply_motifs from the combo.
 	"archetype": "scatter",
 	# Target width of the lanes between obstacles, in world px (scaled per grid).
-	"lane_px": 32.0,
+	"lane_px": 24.0,
 	"open_lo": 0.50,
 	"open_hi": 0.70,
 	## Keep stamping cover until openness falls to at most this (per-archetype).
 	"densify_to": 0.64,
 	"reach_lo": 0.98,
-	"spawn_clear": 3,
+	"spawn_clear": 2,
 	"enemy_clear": 2,
 	"enemy_ring_min": 0.32,
 	"enemy_ring_max": 0.72,
@@ -69,15 +69,15 @@ static func generate(cols: int, rows: int, seed_value: int, combo: Array, params
 	for k in params.keys():
 		p[k] = params[k]
 	var motif := _apply_motifs(p, combo)
-	# Obstacles are sized in cells, but the arena is a fixed width in px, so
-	# scale block dimensions by the grid to keep the same *world* footprint (and
-	# therefore the same openness) at any cell size. Reference: 60 cols, i.e.
-	# the 960 px arena at a 16 px cell, so `k` is cells-per-reference-cell.
+	# Obstacles are sized in cells, but the arena has a fixed world size, so scale
+	# block dimensions by the grid to keep the same *world* footprint (and
+	# therefore the same openness) at any cell size. Reference: 29 cols at a 10 px
+	# cell ~= the 288 px open arena, so `k` is cells-per-reference-cell.
 	# Lanes and margins scale too, so the space between obstacles stays a
 	# consistent world width (~`lane_px`) and never a 1-cell maze corridor.
-	var k: float = clampf(float(cols) / 60.0, 0.4, 2.0)
+	var k: float = clampf(float(cols) / 29.0, 0.45, 2.0)
 	motif["scale"] = k
-	motif["gap"] = maxi(2, int(round(float(motif["lane_px"]) * k / 16.0)))
+	motif["gap"] = maxi(2, int(round(float(motif["lane_px"]) * k / 10.0)))
 	motif["margin"] = maxi(3, int(motif["border"]) + int(motif["gap"]))
 	motif["spawn_clear"] = maxi(2, int(round(float(motif["spawn_clear"]) * k)))
 	var base_key: String = "%d|%d|%s" % [seed_value, combo_signature(combo), _param_key(motif)]
@@ -279,10 +279,11 @@ static func _densify(lvl: Level, rng: RandomNumberGenerator, p: Dictionary, basi
 	while float(total - solid) / float(total) > target and guard < 200:
 		guard += 1
 		# Big blocks first (best coverage), falling back to small ones so leftover
-		# pockets still get filled. Each size gets a batch of random placements.
+		# pockets still get filled. The schedule steps down every few placements so
+		# even a cramped grid reaches the small blocks that still fit.
 		var placed_this: bool = false
 		for attempt in range(48):
-			var lo: int = maxi(4, 14 - (attempt / 8) * 2)
+			var lo: int = maxi(2, 14 - (attempt / 4) * 2)
 			var w := _scaled(p, rng, lo, mini(lo + 4, 18))
 			var h := _scaled(p, rng, lo, mini(lo + 4, 18))
 			if _place_free_block(lvl, rng, p, w, h, basin):

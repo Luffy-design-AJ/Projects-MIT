@@ -37,11 +37,9 @@ func _ready() -> void:
 func _setup_procedural(cfg) -> void:
 	if player != null and swarm_world.level != null:
 		player.global_position = swarm_world.cell_to_world(swarm_world.level.spawn_cell)
-		# The procedural arena is larger than one screen, so pull the camera back
-		# from the hand-authored sandbox zoom (8x) to a readable overview.
-		var cam := player.get_node_or_null("Camera2D") as Camera2D
-		if cam != null:
-			cam.zoom = Vector2(3.0, 3.0)
+		# Keep the hand-authored sandbox zoom (8x): the camera stays locked on the
+		# player, and the open arena is only ~4 screens of area, so it is covered
+		# by roaming rather than by zooming out.
 	for slot in ["Enemy1", "Enemy2", "Enemy3", "Enemy4"]:
 		var placeholder = get_node_or_null(slot)
 		if placeholder != null:

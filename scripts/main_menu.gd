@@ -14,9 +14,11 @@ const MODE_PROC_2 := 2
 const CELL_SIZES := [10.0, 16.0, 20.0]
 const CELL_LABELS := ["10 px (fine)", "16 px", "20 px (coarse)"]
 ## Procedural 1 = the classic BSP/maze arena. Procedural 2 = the open arena.
-## The open arena is sized so the player must roam several screens to see it all.
+## At the sandbox/player zoom (8x) the visible window is ~144x81 px, so the open
+## arena is sized to ~2x2 of those frames (4 screens of area): it takes roaming to
+## see it all, but the camera stays locked on the player.
 const ARENA_1 := Vector2(1280.0, 800.0)
-const ARENA_2 := Vector2(960.0, 600.0)
+const ARENA_2 := Vector2(288.0, 162.0)
 const MAX_PER_TYPE := 4
 const MAX_TOTAL := 10
 

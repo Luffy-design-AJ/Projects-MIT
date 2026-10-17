@@ -1,24 +1,25 @@
 extends RefCounted
 class_name LevelGenerator
 
-## Procedural level generator for the swarm sandbox.
+## Procedural level generator.
 ##
-## Pure and deterministic: (seed, combo, params) -> identical layout, and a
-## different combo reshapes the *terrain* (not just enemy cells), because the
-## combo changes both the RNG stream and the generator's motif weights.
+## DESIGN: an OPEN arena with a few obstacle set-pieces, not a carved maze.
+## Filling the floor and stamping blocks keeps openness high (no thin forced
+## corridors, few chokepoints) so the swarm has room to flow and the arena reads
+## as one space. The enemy combo picks an *archetype* (open field / lanes / ring
+## / quadrants / scatter); the seed varies the exact placement.
 ##
-## It is intentionally cheap: BSP rooms + corridors + pillars, then two linear
-## grid passes (distance-to-wall, reachability from spawn) and placement. No
-## pathfinding — the swarm follows pheromone gradients and only needs a
-## connected, diffusion-friendly grid. Everything is O(cells).
+## Determinism: the same (seed, combo, params) always yields the same level, and
+## a different combo with the same seed yields a different layout. All randomness
+## comes from one RNG seeded by a hash of those three.
 ##
-## Output is a plain data grid, so swapping the wall renderer for a TileMap
-## later is a rendering-only change.
+## Performance: O(cells) per attempt (two grid sweeps + placement scans). No
+## pathfinding, because the swarm follows pheromone values, not routes.
 
 class Level:
 	var cols: int = 0
 	var rows: int = 0
-	## 1 = wall (blocks swarm movement and pheromone diffusion), 0 = open.
+	## 1 = solid (blocks ants and pheromone diffusion), 0 = open.
 	var solid: PackedByteArray = PackedByteArray()
 	## [{ "cell": Vector2i, "amount": int }, ...]
 	var food: Array = []
@@ -26,41 +27,49 @@ class Level:
 	## [{ "type": int (Enemy.Type), "cell": Vector2i }, ...]
 	var enemies: Array = []
 	var seed: int = 0
-	## Diagnostics for the chosen attempt (valid flag, openness, chokepoints...).
+	## Diagnostics for the chosen attempt.
 	var stats: Dictionary = {}
 
 
 const DIRS4 := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 
-## Base tuning. Every value can be overridden by the caller.
+## Fixed order, used to break archetype ties deterministically.
+const ARCH_ORDER := ["open_field", "lanes", "ring", "quadrants", "scatter"]
+
 const DEFAULTS := {
 	"border": 1,
-	"room_min": 6,
-	"room_max": 16,
-	"bsp_depth": 5,
-	"room_margin": 2,
-	"corridor_width": 3,
-	"extra_link_chance": 0.4,
-	"pillar_chance": 0.35,
-	"pillar_max": 3,
+	# Archetype set by _apply_motifs from the combo.
+	"archetype": "scatter",
+	"border_margin": 3,
+	"obstacle_gap": 3,
+	"open_lo": 0.72,
+	"open_hi": 0.93,
+	"reach_lo": 0.98,
+	"spawn_clear": 3,
+	"enemy_clear": 2,
+	"enemy_ring_min": 0.32,
+	"enemy_ring_max": 0.72,
+	"enemy_min_sep": 6,
 	"food_count": 3,
 	"food_amount": 200,
-	"food_min_sep": 7,
-	"enemy_min_sep": 6,
+	"food_min_sep": 8,
 	"max_attempts": 24,
-	"open_lo": 0.30,
-	"open_hi": 0.82,
-	"reach_lo": 0.90,
-	"choke_min": 14,
 }
 
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
 
-## Generate a level. `combo` is an Array of Enemy.Type ints (may be empty).
 static func generate(cols: int, rows: int, seed_value: int, combo: Array, params: Dictionary = {}) -> Level:
 	var p: Dictionary = DEFAULTS.duplicate(true)
 	for k in params.keys():
 		p[k] = params[k]
 	var motif := _apply_motifs(p, combo)
+	# Obstacles are sized in cells, but the arena is a fixed 640x400 px. Scale
+	# block dimensions by the grid so the same archetype keeps the same *world*
+	# footprint (and therefore the same openness) at any cell size. Reference:
+	# the 40x25 grid (cell 16). Clamped so extreme scales stay sane.
+	motif["scale"] = clampf(float(cols) / 40.0, 0.5, 2.2)
 	var base_key: String = "%d|%d|%s" % [seed_value, combo_signature(combo), _param_key(motif)]
 	var attempts: int = maxi(1, int(motif.get("max_attempts", 24)))
 	var last: Level = null
@@ -75,8 +84,8 @@ static func generate(cols: int, rows: int, seed_value: int, combo: Array, params
 	return last
 
 
-## Turn a user-entered seed string into an int. Pure integers are used as typed;
-## any other text is hashed so a word is still a stable, shareable seed.
+## Turn a user-entered seed string into an int. Integers are used as typed; any
+## other text is hashed so a word is still a stable, shareable seed.
 static func parse_seed(text: String) -> int:
 	var t := text.strip_edges()
 	if t == "":
@@ -86,8 +95,8 @@ static func parse_seed(text: String) -> int:
 	return _fnv(t)
 
 
-## Order-independent combo signature, so picking the same enemies yields the same
-## level for a given seed.
+## Order-independent combo signature. Duplicates matter, so a combo of
+## [PREDATOR, PREDATOR, SIREN] hashes differently from [PREDATOR, SIREN].
 static func combo_signature(combo: Array) -> int:
 	var ids: Array = []
 	for c in combo:
@@ -101,55 +110,57 @@ static func combo_signature(combo: Array) -> int:
 
 ## FNV-1a over a string. Explicit so determinism does not depend on String.hash().
 static func _fnv(s: String) -> int:
-	var h: int = 0x811c9dc5
-	for i in s.length():
+	var h: int = 2166136261
+	for i in range(s.length()):
 		h = h ^ s.unicode_at(i)
-		h = (h * 0x01000193) & 0xffffffff
+		h = (h * 16777619) & 0xFFFFFFFF
 	return h
 
 
-## Canonical string of every param that shapes geometry, so the RNG stream is a
-## function of (seed, combo, params) only.
+## Stable string of every param, so any override changes the RNG stream.
 static func _param_key(p: Dictionary) -> String:
-	return "%d_%d_%d_%d_%d_%d_%d_%d_%d" % [
-		int(p.get("room_min", 0)),
-		int(p.get("room_max", 0)),
-		int(p.get("bsp_depth", 0)),
-		int(p.get("room_margin", 0)),
-		int(p.get("corridor_width", 0)),
-		int(round(float(p.get("extra_link_chance", 0.0)) * 1000.0)),
-		int(round(float(p.get("pillar_chance", 0.0)) * 1000.0)),
-		int(p.get("pillar_max", 0)),
-		int(p.get("food_count", 0)),
-	]
+	var keys: Array = p.keys()
+	keys.sort()
+	var s := ""
+	for k in keys:
+		s += "%s=%s;" % [str(k), str(p[k])]
+	return s
 
 
-## Enemies bias the layout so their simple rule becomes relevant. Applied before
-## carving, so the combo changes topology, not just enemy cells.
+## Enemy type -> arena archetype.
+static func _archetype_for(type: int) -> String:
+	match type:
+		Enemy.Type.ASSASSIN:
+			return "open_field"
+		Enemy.Type.PREDATOR:
+			return "lanes"
+		Enemy.Type.FIREWALL:
+			return "quadrants"
+		Enemy.Type.BROODMOTHER:
+			return "scatter"
+		Enemy.Type.SIREN:
+			return "ring"
+	return "scatter"
+
+
+## Count-weighted pick: the most numerous type decides the arena, ties resolved
+## by a fixed order so the choice is deterministic.
 static func _apply_motifs(p: Dictionary, combo: Array) -> Dictionary:
 	var m: Dictionary = p.duplicate(true)
+	var weights: Dictionary = {}
 	for c in combo:
-		match int(c):
-			Enemy.Type.PREDATOR:
-				# Force clumping: fewer escape loops, tighter corridors.
-				m["room_max"] = maxi(int(m["room_min"]) + 2, int(m["room_max"]) - 3)
-				m["corridor_width"] = maxi(2, int(m["corridor_width"]) - 1)
-				m["extra_link_chance"] = maxf(0.0, float(m["extra_link_chance"]) - 0.22)
-			Enemy.Type.SIREN:
-				# Bigger gathering basins for the lure to punish.
-				m["room_min"] = int(m["room_min"]) + 2
-			Enemy.Type.FIREWALL:
-				# More internal structure -> a landmark region it can deny.
-				m["pillar_chance"] = float(m["pillar_chance"]) + 0.18
-			Enemy.Type.BROODMOTHER:
-				# Longer, more subdivided routes for the economy to bleed along.
-				m["bsp_depth"] = int(m["bsp_depth"]) + 1
-				m["room_max"] = maxi(int(m["room_min"]) + 2, int(m["room_max"]) - 2)
-			Enemy.Type.ASSASSIN:
-				# Keep an open field to duel in.
-				m["pillar_chance"] = maxf(0.0, float(m["pillar_chance"]) - 0.28)
-	m["room_min"] = maxi(4, int(m["room_min"]))
-	m["room_max"] = maxi(int(m["room_min"]) + 2, int(m["room_max"]))
+		var a: String = _archetype_for(int(c))
+		weights[a] = int(weights.get(a, 0)) + 1
+	if weights.is_empty():
+		return m
+	var best := "scatter"
+	var best_w := -1
+	for key in ARCH_ORDER:
+		var w: int = int(weights.get(key, 0))
+		if w > best_w:
+			best_w = w
+			best = key
+	m["archetype"] = best
 	return m
 
 
@@ -162,18 +173,12 @@ static func _attempt(cols: int, rows: int, rng: RandomNumberGenerator, p: Dictio
 	lvl.cols = cols
 	lvl.rows = rows
 	lvl.solid.resize(cols * rows)
-	lvl.solid.fill(1)
-
-	var rooms := _carve_rooms(lvl, rng, p)
-	if rooms.is_empty():
-		lvl.stats = {"valid": false, "why": "no_rooms"}
-		return lvl
-	_carve_links(lvl, rooms, rng, p)
-	_carve_extra_links(lvl, rooms, rng, p)
-	_carve_pillars(lvl, rooms, rng, p)
+	lvl.solid.fill(0)
+	_seal_border(lvl, p)
+	_stamp_archetype(lvl, rng, p)
 
 	var dist_wall := _distance_to_wall(lvl.solid, cols, rows)
-	lvl.spawn_cell = _pick_spawn(lvl, dist_wall, rng)
+	lvl.spawn_cell = _pick_spawn(lvl, dist_wall, rng, p)
 
 	var reach := _reachable(lvl.solid, cols, rows, lvl.spawn_cell)
 	_place_food(lvl, reach, rng, p)
@@ -183,135 +188,162 @@ static func _attempt(cols: int, rows: int, rng: RandomNumberGenerator, p: Dictio
 	return lvl
 
 
+## Outer ring of solid cells, so the arena is always sealed (ants and diffusion
+## stay inside). Everything else starts open.
+static func _seal_border(lvl: Level, p: Dictionary) -> void:
+	var b: int = maxi(1, int(p["border"]))
+	for y in range(lvl.rows):
+		for x in range(lvl.cols):
+			if x < b or x >= lvl.cols - b or y < b or y >= lvl.rows - b:
+				lvl.solid[y * lvl.cols + x] = 1
+
+
 # ---------------------------------------------------------------------------
-# Terrain
+# Obstacle archetypes
 # ---------------------------------------------------------------------------
 
-static func _carve_rooms(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> Array:
-	var leaves: Array = []
-	_split_leaf(Rect2i(1, 1, lvl.cols - 2, lvl.rows - 2), rng, p, leaves, 0)
-	var rooms: Array = []
-	for leaf in leaves:
-		var margin: int = int(p["room_margin"])
-		var max_w: int = leaf.size.x - margin * 2
-		var max_h: int = leaf.size.y - margin * 2
-		if max_w < int(p["room_min"]) or max_h < int(p["room_min"]):
+static func _stamp_archetype(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	match str(p.get("archetype", "scatter")):
+		"open_field":
+			_stamp_open_field(lvl, rng, p)
+		"quadrants":
+			_stamp_quadrants(lvl, rng, p)
+		"ring":
+			_stamp_ring(lvl, rng, p)
+		"lanes":
+			_stamp_lanes(lvl, rng, p)
+		_:
+			_stamp_scatter(lvl, rng, p)
+
+
+## A duelling field: a handful of small cover blocks, still very open.
+static func _stamp_open_field(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	var placed: Array = []
+	var count := rng.randi_range(3, 5)
+	for _i in range(count):
+		var w := _scaled(p, rng, 3, 6)
+		var h := _scaled(p, rng, 3, 6)
+		if not _random_block(lvl, rng, p, placed, w, h):
 			continue
-		max_w = mini(max_w, int(p["room_max"]))
-		max_h = mini(max_h, int(p["room_max"]))
-		var rw: int = rng.randi_range(int(p["room_min"]), max_w)
-		var rh: int = rng.randi_range(int(p["room_min"]), max_h)
-		var rx: int = leaf.position.x + rng.randi_range(margin, leaf.size.x - margin - rw)
-		var ry: int = leaf.position.y + rng.randi_range(margin, leaf.size.y - margin - rh)
-		var room := Rect2i(Vector2i(rx, ry), Vector2i(rw, rh))
-		rooms.append(room)
-		_carve_rect(lvl, room)
-	return rooms
 
 
-static func _split_leaf(leaf: Rect2i, rng: RandomNumberGenerator, p: Dictionary, leaves: Array, depth: int) -> void:
-	var min_leaf: int = int(p["room_min"]) + int(p["room_margin"]) * 2
-	var can_x: bool = leaf.size.x >= min_leaf * 2
-	var can_y: bool = leaf.size.y >= min_leaf * 2
-	if depth >= int(p["bsp_depth"]) or (not can_x and not can_y):
-		leaves.append(leaf)
-		return
-	var split_x: bool
-	if can_x and can_y:
-		split_x = leaf.size.x >= leaf.size.y
-	elif can_x:
-		split_x = true
-	else:
-		split_x = false
-	if split_x:
-		var cut: int = rng.randi_range(min_leaf, leaf.size.x - min_leaf)
-		_split_leaf(Rect2i(leaf.position, Vector2i(cut, leaf.size.y)), rng, p, leaves, depth + 1)
-		_split_leaf(Rect2i(leaf.position + Vector2i(cut, 0), Vector2i(leaf.size.x - cut, leaf.size.y)), rng, p, leaves, depth + 1)
-	else:
-		var cut2: int = rng.randi_range(min_leaf, leaf.size.y - min_leaf)
-		_split_leaf(Rect2i(leaf.position, Vector2i(leaf.size.x, cut2)), rng, p, leaves, depth + 1)
-		_split_leaf(Rect2i(leaf.position + Vector2i(0, cut2), Vector2i(leaf.size.x, leaf.size.y - cut2)), rng, p, leaves, depth + 1)
+## Cell dimensions scale with the grid so all cell sizes share a look.
+static func _scaled(p: Dictionary, rng: RandomNumberGenerator, lo: int, hi: int) -> int:
+	var k: float = float(p.get("scale", 1.0))
+	return maxi(1, int(round(float(rng.randi_range(lo, hi)) * k)))
 
 
-static func _carve_links(lvl: Level, rooms: Array, rng: RandomNumberGenerator, p: Dictionary) -> void:
-	var w: int = int(p["corridor_width"])
-	for i in range(1, rooms.size()):
-		_carve_corridor(lvl, _room_center(rooms[i - 1]), _room_center(rooms[i]), w, rng)
+## Long partial dividers with wide ends: funnels without chokepoints.
+static func _stamp_lanes(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	var placed: Array = []
+	var count := rng.randi_range(2, 3)
+	for _i in range(count):
+		var horizontal := rng.randf() < 0.5
+		var r: Rect2i
+		if horizontal:
+			var len := rng.randi_range(int(lvl.cols * 0.35), int(lvl.cols * 0.6))
+			var thick := _scaled(p, rng, 1, 2)
+			r = Rect2i(rng.randi_range(0, lvl.cols - len), rng.randi_range(0, lvl.rows - thick), len, thick)
+		else:
+			var len2 := rng.randi_range(int(lvl.rows * 0.35), int(lvl.rows * 0.6))
+			var thick2 := _scaled(p, rng, 1, 2)
+			r = Rect2i(rng.randi_range(0, lvl.cols - thick2), rng.randi_range(0, lvl.rows - len2), thick2, len2)
+		_try_place_rect(lvl, r, placed, p)
 
 
-static func _carve_extra_links(lvl: Level, rooms: Array, rng: RandomNumberGenerator, p: Dictionary) -> void:
-	if rooms.size() < 3:
-		return
-	var w: int = maxi(2, int(p["corridor_width"]) - 1)
-	for i in range(rooms.size()):
-		if rng.randf() < float(p["extra_link_chance"]):
-			var j: int = rng.randi_range(0, rooms.size() - 1)
-			if j != i:
-				_carve_corridor(lvl, _room_center(rooms[i]), _room_center(rooms[j]), w, rng)
+## Four big blocks in the quadrants plus a centre landmark: a wide cross of
+## lanes through the middle, which is where a Firewall wants to stand.
+static func _stamp_quadrants(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	var placed: Array = []
+	var anchors := [
+		Vector2i(lvl.cols / 4, lvl.rows / 4),
+		Vector2i(3 * lvl.cols / 4, lvl.rows / 4),
+		Vector2i(lvl.cols / 4, 3 * lvl.rows / 4),
+		Vector2i(3 * lvl.cols / 4, 3 * lvl.rows / 4),
+	]
+	for a in anchors:
+		var w := _scaled(p, rng, 6, 9)
+		var h := _scaled(p, rng, 6, 9)
+		var pos: Vector2i = a - Vector2i(w / 2, h / 2) + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+		if not _try_place_rect(lvl, Rect2i(pos, Vector2i(w, h)), placed, p):
+			_try_place_rect(lvl, Rect2i(pos, Vector2i(5, 5)), placed, p)
+	var cw := _scaled(p, rng, 4, 6)
+	var ch := _scaled(p, rng, 4, 6)
+	var c := Vector2i(lvl.cols / 2, lvl.rows / 2)
+	_try_place_rect(lvl, Rect2i(c - Vector2i(cw / 2, ch / 2), Vector2i(cw, ch)), placed, p)
 
 
-static func _carve_pillars(lvl: Level, rooms: Array, rng: RandomNumberGenerator, p: Dictionary) -> void:
-	for room in rooms:
-		if rng.randf() >= float(p["pillar_chance"]):
-			continue
-		var blocks: int = rng.randi_range(1, maxi(1, int(p["pillar_max"])))
-		for _b in range(blocks):
-			var size: int = rng.randi_range(1, 2)
-			# Keep a 2-cell margin so pillars never seal a room or a doorway.
-			if room.size.x - 4 < size or room.size.y - 4 < size:
-				continue
-			var px: int = room.position.x + rng.randi_range(2, room.size.x - 2 - size)
-			var py: int = room.position.y + rng.randi_range(2, room.size.y - 2 - size)
-			for y in range(py, py + size):
-				for x in range(px, px + size):
-					if x >= 1 and x < lvl.cols - 1 and y >= 1 and y < lvl.rows - 1:
-						lvl.solid[y * lvl.cols + x] = 1
+## Loose ring of blocks: a landmark band to fight around, with an open basin in
+## the middle and open space outside it.
+static func _stamp_ring(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	var placed: Array = []
+	var cx := lvl.cols / 2
+	var cy := lvl.rows / 2
+	var base_r := float(mini(lvl.cols, lvl.rows)) * 0.30
+	var count := rng.randi_range(6, 9)
+	for i in range(count):
+		var ang := TAU * float(i) / float(count) + rng.randf_range(-0.2, 0.2)
+		var rr := base_r + rng.randf_range(-2.0, 2.0)
+		var w := _scaled(p, rng, 3, 5)
+		var h := _scaled(p, rng, 3, 5)
+		var px := int(round(float(cx) + cos(ang) * rr)) - w / 2
+		var py := int(round(float(cy) + sin(ang) * rr)) - h / 2
+		_try_place_rect(lvl, Rect2i(px, py, w, h), placed, p)
 
 
-static func _carve_corridor(lvl: Level, a: Vector2i, b: Vector2i, w: int, rng: RandomNumberGenerator) -> void:
-	if rng.randf() < 0.5:
-		_carve_h(lvl, a.x, b.x, a.y, w)
-		_carve_v(lvl, a.y, b.y, b.x, w)
-	else:
-		_carve_v(lvl, a.y, b.y, a.x, w)
-		_carve_h(lvl, a.x, b.x, b.y, w)
+## Default: a few medium blocks scattered with breathing room.
+static func _stamp_scatter(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
+	var placed: Array = []
+	var count := rng.randi_range(6, 9)
+	for _i in range(count):
+		var w := _scaled(p, rng, 4, 7)
+		var h := _scaled(p, rng, 4, 7)
+		_random_block(lvl, rng, p, placed, w, h)
 
 
-static func _carve_h(lvl: Level, x0: int, x1: int, y: int, w: int) -> void:
-	var half: int = w / 2
-	for x in range(mini(x0, x1), maxi(x0, x1) + 1):
-		for dy in range(-half, half + 1):
-			_open_if_in(lvl, x, y + dy)
+## Tries one free block of the given size. Returns false when it found no legal
+## spot (so an archetype can silently place fewer blocks rather than overlap).
+static func _random_block(lvl: Level, rng: RandomNumberGenerator, p: Dictionary, placed: Array, w: int, h: int) -> bool:
+	return _try_place_rect(lvl, Rect2i(0, 0, w, h), placed, p, true, rng)
 
 
-static func _carve_v(lvl: Level, y0: int, y1: int, x: int, w: int) -> void:
-	var half: int = w / 2
-	for y in range(mini(y0, y1), maxi(y0, y1) + 1):
-		for dx in range(-half, half + 1):
-			_open_if_in(lvl, x + dx, y)
+## Places `r`, respecting the border margin and the inter-obstacle gap. When
+## `randomize_position` is true the position is rolled from the RNG instead.
+static func _try_place_rect(lvl: Level, r: Rect2i, placed: Array, p: Dictionary, randomize_position: bool = false, rng: RandomNumberGenerator = null) -> bool:
+	var margin: int = int(p["border"]) + int(p["border_margin"])
+	var gap: int = int(p["obstacle_gap"])
+	if randomize_position:
+		if lvl.cols - margin * 2 < r.size.x or lvl.rows - margin * 2 < r.size.y:
+			return false
+		r.position = Vector2i(
+			rng.randi_range(margin, lvl.cols - margin - r.size.x),
+			rng.randi_range(margin, lvl.rows - margin - r.size.y)
+		)
+	if r.position.x < margin or r.position.y < margin:
+		return false
+	if r.position.x + r.size.x > lvl.cols - margin or r.position.y + r.size.y > lvl.rows - margin:
+		return false
+	for pr in placed:
+		var prect: Rect2i = pr
+		if r.grow(gap).intersects(prect):
+			return false
+	_fill_rect(lvl, r)
+	placed.append(r)
+	return true
 
 
-static func _carve_rect(lvl: Level, room: Rect2i) -> void:
-	for y in range(room.position.y, room.position.y + room.size.y):
-		for x in range(room.position.x, room.position.x + room.size.x):
-			_open_if_in(lvl, x, y)
-
-
-static func _open_if_in(lvl: Level, x: int, y: int) -> void:
-	if x < 1 or x >= lvl.cols - 1 or y < 1 or y >= lvl.rows - 1:
-		return
-	lvl.solid[y * lvl.cols + x] = 0
-
-
-static func _room_center(room: Rect2i) -> Vector2i:
-	return room.position + room.size / 2
+static func _fill_rect(lvl: Level, r: Rect2i) -> void:
+	for yy in range(r.position.y, r.position.y + r.size.y):
+		for xx in range(r.position.x, r.position.x + r.size.x):
+			if xx >= 0 and xx < lvl.cols and yy >= 0 and yy < lvl.rows:
+				lvl.solid[yy * lvl.cols + xx] = 1
 
 
 # ---------------------------------------------------------------------------
 # Grid features
 # ---------------------------------------------------------------------------
 
-## Manhattan distance from every cell to the nearest wall (wall cells = 0).
+## Manhattan distance from every cell to the nearest solid cell.
 static func _distance_to_wall(solid: PackedByteArray, cols: int, rows: int) -> PackedInt32Array:
 	var n: int = cols * rows
 	var dist := PackedInt32Array()
@@ -382,21 +414,22 @@ static func _reachable(solid: PackedByteArray, cols: int, rows: int, start: Vect
 # Placement
 # ---------------------------------------------------------------------------
 
-static func _pick_spawn(lvl: Level, dist_wall: PackedInt32Array, rng: RandomNumberGenerator) -> Vector2i:
+## A central clearing the colony can start in.
+static func _pick_spawn(lvl: Level, dist_wall: PackedInt32Array, rng: RandomNumberGenerator, p: Dictionary) -> Vector2i:
 	var center := Vector2(lvl.cols - 1, lvl.rows - 1) * 0.5
+	var need: int = maxi(1, int(p["spawn_clear"]))
 	var best_score := INF
 	var best := Vector2i(lvl.cols / 2, lvl.rows / 2)
 	for y in range(1, lvl.rows - 1):
 		for x in range(1, lvl.cols - 1):
 			var i: int = y * lvl.cols + x
-			if lvl.solid[i] == 1 or dist_wall[i] < 3:
+			if lvl.solid[i] == 1 or dist_wall[i] < need:
 				continue
 			var score: float = Vector2(x, y).distance_to(center) + rng.randf() * 3.0
 			if score < best_score:
 				best_score = score
 				best = Vector2i(x, y)
 	if best_score == INF:
-		# Relaxed fallback: any open cell nearest the centre.
 		for y in range(1, lvl.rows - 1):
 			for x in range(1, lvl.cols - 1):
 				if lvl.solid[y * lvl.cols + x] == 0:
@@ -407,6 +440,7 @@ static func _pick_spawn(lvl: Level, dist_wall: PackedInt32Array, rng: RandomNumb
 	return best
 
 
+## Food at spread distances from the nest, never in a wall and never bunched.
 static func _place_food(lvl: Level, reach: Dictionary, rng: RandomNumberGenerator, p: Dictionary) -> void:
 	var reach_dist: PackedInt32Array = reach["dist"]
 	var maxd: int = maxi(1, int(reach["maxd"]))
@@ -433,108 +467,102 @@ static func _place_food(lvl: Level, reach: Dictionary, rng: RandomNumberGenerato
 
 
 static func _tier_fractions(count: int) -> Array:
-	match count:
-		1:
-			return [0.5]
-		2:
-			return [0.3, 0.75]
-		3:
-			return [0.28, 0.58, 0.88]
-		_:
-			var out: Array = []
-			for k in range(count):
-				out.append(lerpf(0.25, 0.9, float(k) / float(maxi(1, count - 1))))
-			return out
+	if count <= 0:
+		return []
+	if count == 1:
+		return [0.6]
+	if count == 2:
+		return [0.4, 0.75]
+	if count == 3:
+		return [0.35, 0.6, 0.85]
+	var out: Array = []
+	for i in range(count):
+		out.append(0.25 + 0.6 * float(i) / float(count - 1))
+	return out
 
 
+## Distributes every enemy instance around the nest on an angular ring, instead
+## of scoring them into one far corner. Search is by expanding distance from the
+## desired spot, relaxing clearance and separation if the grid is crowded.
 static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32Array, rng: RandomNumberGenerator, p: Dictionary, combo: Array) -> void:
+	if combo.is_empty():
+		return
 	var reach_dist: PackedInt32Array = reach["dist"]
-	var maxd: int = maxi(1, int(reach["maxd"]))
-	var placed: Array = []
-	var food_cells: Array = []
-	for f in lvl.food:
-		food_cells.append(f["cell"])
-	# Fixed order (sorted), so the seed — not the pick order — varies the layout.
 	var order: Array = []
 	for c in combo:
 		order.append(int(c))
 	order.sort()
-	for type in order:
-		var cell := _candidate_for(type, lvl, reach_dist, dist_wall, maxd, placed, food_cells, rng, p)
+
+	var half := Vector2(float(lvl.cols), float(lvl.rows)) * 0.5
+	var ring_scale := minf(half.x, half.y)
+	var base_angle := rng.randf() * TAU
+	var placed: Array = []
+	var food_cells: Array = []
+	for f in lvl.food:
+		food_cells.append(f["cell"])
+
+	var n := order.size()
+	for k in range(n):
+		var type: int = order[k]
+		var ang := base_angle + TAU * float(k) / float(n) + rng.randf_range(-0.15, 0.15)
+		var rfrac := clampf(
+			rng.randf_range(float(p["enemy_ring_min"]), float(p["enemy_ring_max"])) * _ring_type_scale(type),
+			0.12, 0.62
+		)
+		var desired := Vector2i(
+			int(round(float(lvl.spawn_cell.x) + cos(ang) * rfrac * ring_scale)),
+			int(round(float(lvl.spawn_cell.y) + sin(ang) * rfrac * ring_scale))
+		)
+		var cell := _find_enemy_cell(lvl, desired, reach_dist, dist_wall, placed, type, rng, p, food_cells)
 		if cell.x >= 0:
 			placed.append(cell)
 			lvl.enemies.append({"type": type, "cell": cell})
 
 
-static func _candidate_for(type: int, lvl: Level, reach_dist: PackedInt32Array, dist_wall: PackedInt32Array, maxd: int, placed: Array, food_cells: Array, rng: RandomNumberGenerator, p: Dictionary) -> Vector2i:
-	# Pass 0: strict predicate + strict separation. Pass 1: relaxed, so a combo
-	# never silently drops an enemy on an unlucky layout.
-	for relax in range(2):
-		var relaxed: bool = relax == 1
-		var sep: int = int(p["enemy_min_sep"]) if not relaxed else maxi(2, int(p["enemy_min_sep"]) / 2)
+static func _ring_type_scale(type: int) -> float:
+	match type:
+		Enemy.Type.ASSASSIN:
+			return 1.25  # wants room to circle and strike
+		Enemy.Type.PREDATOR:
+			return 0.75  # closes in fast
+		Enemy.Type.SIREN:
+			return 1.1
+		Enemy.Type.FIREWALL:
+			return 0.95
+	return 1.0
+
+
+## Nearest open, reachable cell to `desired` that satisfies the type's clearance
+## and the pack separation. Relaxes both on later passes so a cell always lands.
+static func _find_enemy_cell(lvl: Level, desired: Vector2i, reach_dist: PackedInt32Array, dist_wall: PackedInt32Array, placed: Array, type: int, rng: RandomNumberGenerator, p: Dictionary, food_cells: Array) -> Vector2i:
+	var clear: int = int(p["enemy_clear"])
+	match type:
+		Enemy.Type.ASSASSIN, Enemy.Type.SIREN:
+			clear = 3
+	var sep: int = int(p["enemy_min_sep"])
+	for relax in range(3):
+		var need_clear: int = maxi(1, clear - relax)
+		var need_sep: int = maxi(3, sep - relax * 3)
 		var best := Vector2i(-1, -1)
 		var best_score := INF
 		for y in range(1, lvl.rows - 1):
 			for x in range(1, lvl.cols - 1):
 				var i: int = y * lvl.cols + x
-				if lvl.solid[i] == 1 or reach_dist[i] < 0:
+				if lvl.solid[i] == 1 or reach_dist[i] < 0 or dist_wall[i] < need_clear:
 					continue
-				var cell := Vector2i(x, y)
-				if _too_close(cell, placed, sep):
+				if _too_close(Vector2i(x, y), placed, need_sep):
 					continue
-				var score := _candidate_score(type, cell, reach_dist[i], dist_wall[i], maxd, food_cells, relaxed)
-				if score == INF:
-					continue
-				score += rng.randf() * 0.5
+				var score := Vector2(x, y).distance_to(Vector2(desired))
+				if type == Enemy.Type.BROODMOTHER:
+					score += float(_nearest_food_dist(Vector2i(x, y), food_cells)) * 0.4
+				elif type == Enemy.Type.SIREN or type == Enemy.Type.FIREWALL:
+					score -= float(mini(dist_wall[i], 6)) * 0.6  # wants a big landmark
 				if score < best_score:
 					best_score = score
-					best = cell
+					best = Vector2i(x, y)
 		if best.x >= 0:
 			return best
 	return Vector2i(-1, -1)
-
-
-## Lower is better; INF means the cell fails the type's predicate.
-static func _candidate_score(type: int, cell: Vector2i, d: int, w: int, maxd: int, food_cells: Array, relaxed: bool) -> float:
-	match type:
-		Enemy.Type.PREDATOR:
-			# Ambush from a chokepoint (narrow cells) along the middle of the map.
-			# Needs a little clearance so its body is not half-inside the wall.
-			if w > (3 if relaxed else 2):
-				return INF
-			if d < 0.20 * maxd or d > 0.85 * maxd:
-				return INF
-			return float(w) * 1.5 + absf(float(d) - 0.5 * maxd) * 0.5
-		Enemy.Type.SIREN:
-			# A big basin, far from the nest, where a lure can trap a crowd.
-			if w < (2 if relaxed else 3):
-				return INF
-			if d < (0.45 if relaxed else 0.55) * maxd:
-				return INF
-			return absf(float(d) - 0.8 * maxd)
-		Enemy.Type.FIREWALL:
-			# A room with a landmark feel, denying the mid/far basin.
-			if w < (2 if relaxed else 3):
-				return INF
-			if d < (0.25 if relaxed else 0.35) * maxd:
-				return INF
-			return absf(float(d) - 0.6 * maxd)
-		Enemy.Type.BROODMOTHER:
-			# Sits on a food->nest route so it can farm the carriers.
-			var fd: int = _nearest_food_dist(cell, food_cells)
-			if fd > (12 if relaxed else 7):
-				return INF
-			return float(fd) + absf(float(d) - 0.5 * maxd) * 0.2
-		Enemy.Type.ASSASSIN:
-			# The far, open half of the map: a clean duelling lane.
-			if w < (1 if relaxed else 2):
-				return INF
-			if d < (0.5 if relaxed else 0.6) * maxd:
-				return INF
-			return -float(d)
-		_:
-			return float(d)
-	return INF
 
 
 static func _nearest_food_dist(cell: Vector2i, food_cells: Array) -> int:
@@ -574,7 +602,7 @@ static func _validate(lvl: Level, dist_wall: PackedInt32Array, reach: Dictionary
 			chokepoints += 1
 
 	var spawn_i: int = lvl.spawn_cell.y * lvl.cols + lvl.spawn_cell.x
-	var spawn_basin: bool = dist_wall[spawn_i] >= 2
+	var spawn_basin: bool = dist_wall[spawn_i] >= int(p["spawn_clear"])
 
 	var food_ok: bool = lvl.food.size() > 0
 	for f in lvl.food:
@@ -585,21 +613,21 @@ static func _validate(lvl: Level, dist_wall: PackedInt32Array, reach: Dictionary
 	var enemy_ok: bool = lvl.enemies.size() == combo.size()
 	for e in lvl.enemies:
 		var c: Vector2i = e["cell"]
-		var i: int = c.y * lvl.cols + c.x
-		if lvl.solid[i] == 1 or reach_dist[i] < 0:
+		var i2: int = c.y * lvl.cols + c.x
+		if lvl.solid[i2] == 1 or reach_dist[i2] < 0:
 			enemy_ok = false
 
 	var valid: bool = (
 		reach_frac >= float(p["reach_lo"])
 		and openness >= float(p["open_lo"])
 		and openness <= float(p["open_hi"])
-		and chokepoints >= int(p["choke_min"])
 		and spawn_basin
 		and food_ok
 		and enemy_ok
 	)
 	return {
 		"valid": valid,
+		"archetype": str(p.get("archetype", "scatter")),
 		"openness": openness,
 		"reach_frac": reach_frac,
 		"open_count": open_count,

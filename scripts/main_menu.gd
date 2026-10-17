@@ -12,7 +12,10 @@ const MODE_PROCEDURAL := 1
 
 const CELL_SIZES := [10.0, 16.0, 20.0]
 const CELL_LABELS := ["10 px (fine)", "16 px", "20 px (coarse)"]
-const ARENA := Vector2(1280.0, 800.0)
+## Procedural arena is a single readable room (sandbox keeps its 1280x800).
+const ARENA := Vector2(640.0, 400.0)
+const MAX_PER_TYPE := 4
+const MAX_TOTAL := 10
 
 const ENEMIES := [
 	{"name": "Assassin", "type": Enemy.Type.ASSASSIN, "color": Color(0.95, 0.35, 0.35)},
@@ -26,7 +29,8 @@ var _mode_button: OptionButton
 var _sandbox_box: VBoxContainer
 var _sandbox_option: OptionButton
 var _proc_box: VBoxContainer
-var _enemy_checks: Array = []
+var _counts: Dictionary = {}
+var _count_labels: Dictionary = {}
 var _combo_label: Label
 var _seed_edit: LineEdit
 var _cell_button: OptionButton
@@ -116,16 +120,42 @@ func _build_form() -> VBoxContainer:
 	_proc_box.add_child(e_label)
 
 	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 18)
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 10)
+	grid.add_theme_constant_override("v_separation", 4)
 	_proc_box.add_child(grid)
 	for entry in ENEMIES:
-		var check := CheckBox.new()
-		check.text = entry["name"]
-		check.set_meta("type", entry["type"])
-		check.toggled.connect(_on_combo_toggled)
-		grid.add_child(check)
-		_enemy_checks.append(check)
+		var t: int = entry["type"]
+		_counts[t] = 0
+
+		var name_label := Label.new()
+		name_label.text = entry["name"]
+		name_label.custom_minimum_size = Vector2(120.0, 0.0)
+		grid.add_child(name_label)
+
+		var minus := Button.new()
+		minus.text = "-"
+		minus.custom_minimum_size = Vector2(34.0, 0.0)
+		minus.pressed.connect(_on_count_changed.bind(t, -1))
+		grid.add_child(minus)
+
+		var count_label := Label.new()
+		count_label.text = "0"
+		count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		count_label.custom_minimum_size = Vector2(26.0, 0.0)
+		grid.add_child(count_label)
+		_count_labels[t] = count_label
+
+		var plus := Button.new()
+		plus.text = "+"
+		plus.custom_minimum_size = Vector2(34.0, 0.0)
+		plus.pressed.connect(_on_count_changed.bind(t, 1))
+		grid.add_child(plus)
+
+	var cap := Label.new()
+	cap.text = "Max %d per enemy, %d total" % [MAX_PER_TYPE, MAX_TOTAL]
+	cap.add_theme_color_override("font_color", Color(0.65, 0.68, 0.74))
+	_proc_box.add_child(cap)
 
 	_combo_label = Label.new()
 	_combo_label.add_theme_color_override("font_color", Color(0.95, 0.82, 0.45))
@@ -228,8 +258,23 @@ func _on_mode_selected(index: int) -> void:
 	_apply_mode()
 
 
-func _on_combo_toggled(_pressed: bool) -> void:
+func _on_count_changed(type: int, delta: int) -> void:
+	var current := int(_counts.get(type, 0))
+	var next := current + delta
+	if next < 0 or next > MAX_PER_TYPE:
+		return
+	if delta > 0 and _total_count() >= MAX_TOTAL:
+		return
+	_counts[type] = next
+	_count_labels[type].text = str(next)
 	_refresh_preview()
+
+
+func _total_count() -> int:
+	var total := 0
+	for t in _counts.keys():
+		total += int(_counts[t])
+	return total
 
 
 func _on_random_seed() -> void:
@@ -241,9 +286,10 @@ func _on_random_seed() -> void:
 
 func _selected_types() -> Array:
 	var out: Array = []
-	for check in _enemy_checks:
-		if check.button_pressed:
-			out.append(int(check.get_meta("type")))
+	for entry in ENEMIES:
+		var t: int = entry["type"]
+		for _i in range(int(_counts.get(t, 0))):
+			out.append(t)
 	return out
 
 
@@ -265,13 +311,17 @@ func _refresh_preview() -> void:
 	if _mode != MODE_PROCEDURAL:
 		return
 	var combo := _selected_types()
-	var names: Array = []
-	for t in combo:
-		names.append(_enemy_name(t))
-	if names.is_empty():
+	var parts: Array = []
+	var total := 0
+	for entry in ENEMIES:
+		var c := int(_counts.get(int(entry["type"]), 0))
+		if c > 0:
+			parts.append("%s x%d" % [entry["name"], c])
+			total += c
+	if parts.is_empty():
 		_combo_label.text = "Combo: (none) — empty arena, no enemies"
 	else:
-		_combo_label.text = "Combo: %s" % " + ".join(names)
+		_combo_label.text = "Combo: %s  (%d total)" % [" + ".join(parts), total]
 
 	var cell: float = CELL_SIZES[_cell_button.selected]
 	var cols: int = maxi(1, int(ARENA.x / cell))

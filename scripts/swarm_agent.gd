@@ -105,6 +105,11 @@ var funnel_done_seq: int = -1
 
 func _ready() -> void:
 	add_to_group("swarm_agents")
+	# Never start embedded in terrain (the nest +/- jitter can land in a wall).
+	if swarm_world != null:
+		var free := swarm_world.nearest_open_cell(Vector2i(x, y))
+		x = free.x
+		y = free.y
 	visual_jitter = Vector2(randf_range(-0.35, 0.35), randf_range(-0.35, 0.35)) * swarm_world.cell_size
 	position = _cell_visual_pos()
 
@@ -147,6 +152,13 @@ func update_step() -> void:
 	# under full field control.
 	if funnel_active:
 		return
+	# Safety net: if this ant is somehow standing in a wall (spawn jitter, a
+	# funnel drop, a form change), walk it back to the nearest open cell instead
+	# of letting it sit there with every neighbour blocked.
+	if swarm_world != null and swarm_world.blocked(x, y):
+		var free := swarm_world.nearest_open_cell(Vector2i(x, y))
+		x = free.x
+		y = free.y
 	if command_active or (swarm_world != null and swarm_world.command_mode == SwarmWorld.COMMAND_CARNAGE):
 		if lock_timer <= 0.0:
 			refresh_carnage_command()
@@ -505,11 +517,7 @@ func _launch_from_funnel() -> void:
 	var drop: Vector2 = funnel_origin + funnel_dir * (world.funnel_travel_cells * world.cell_size) + perp * funnel_lane
 	position = drop
 	dir = _dir_index_from_vector(funnel_dir)
-	var cell := _clamp_cell(world.world_to_cell(drop))
-	for _i in range(maxi(1, world.funnel_launch_cells)):
-		var step := cell + DIRS_8[dir]
-		if not world.blocked(step.x, step.y):
-			cell = step
+	var cell := world.nearest_open_cell(world.world_to_cell(drop))
 	x = cell.x
 	y = cell.y
 	straightness = 1.0

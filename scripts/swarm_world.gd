@@ -1177,6 +1177,36 @@ func blocked(cx: int, cy: int) -> bool:
 	return field_manager.solid[cy * cols + cx] == 1
 
 
+## Nearest open cell to `cell` (BFS over the grid), used to free anything that
+## finds itself embedded in solid terrain — e.g. an ant spawned inside a wall.
+## Returns `cell` unchanged when it is already open.
+func nearest_open_cell(cell: Vector2i) -> Vector2i:
+	var c := cell.clamp(Vector2i.ZERO, Vector2i(cols - 1, rows - 1))
+	if not blocked(c.x, c.y):
+		return c
+	var seen := {c: true}
+	var queue: Array = [c]
+	var head: int = 0
+	while head < queue.size():
+		var cur: Vector2i = queue[head]
+		head += 1
+		var neighbours := [
+			cur + Vector2i(1, 0), cur + Vector2i(-1, 0),
+			cur + Vector2i(0, 1), cur + Vector2i(0, -1),
+		]
+		for n in neighbours:
+			var nx: Vector2i = n
+			if nx.x < 0 or nx.x >= cols or nx.y < 0 or nx.y >= rows:
+				continue
+			if seen.has(nx):
+				continue
+			if not blocked(nx.x, nx.y):
+				return nx
+			seen[nx] = true
+			queue.append(nx)
+	return c
+
+
 func saturation_penalty(v: float) -> float:
 	var opt: float = params_sat_cap * 0.5
 	if v < opt:

@@ -171,6 +171,13 @@ var _bomb_timer: float = 0.0
 var _firewalls: Array = []
 
 const VIS_REFRESH_INTERVAL: float = 0.1
+## Adaptive update rate for very large grids. When the grid is > ~1.5M cells,
+## pheromone/ant steps and vis refreshes run at half rate to keep framerate up
+## while preserving the same dt scaling inside the simulation.
+var _update_accum: float = 0.0
+var _large_grid: bool = false
+var _step_every: float = 1.0 / 60.0  # base
+var _step_dt: float = 1.0 / 60.0
 
 
 func _ready() -> void:
@@ -189,6 +196,13 @@ func _ready() -> void:
 
 	field_manager = ScalarFieldManager.new()
 	field_manager.setup(cols, rows)
+
+	_large_grid = (cols * rows > 1_500_000)
+	if _large_grid:
+		_step_every = 1.0 / 30.0  # run at 30hz instead of 60hz
+	else:
+		_step_every = 1.0 / 60.0
+	_step_dt = _step_every
 	add_child(field_manager)
 
 	nest_cell = world_to_cell(nest_position)
@@ -626,8 +640,11 @@ func _physics_process(delta: float) -> void:
 	if move_strength > 0.0:
 		home_field.boost_decay(delta, stale_decay_boost * move_strength)
 
-	field_manager.step(delta)
-	ant_manager.step(delta)
+	_update_accum += delta
+	if _update_accum >= _step_every:
+		_update_accum = fmod(_update_accum, _step_every)
+		field_manager.step(_step_dt)
+		ant_manager.step(_step_dt)
 
 	if not _active_cast.is_empty():
 		var timer: float = _active_cast["timer"] - delta
@@ -661,7 +678,7 @@ func _physics_process(delta: float) -> void:
 	if show_pheromone_vis:
 		_vis_timer -= delta
 		if _vis_timer <= 0.0:
-			_vis_timer = VIS_REFRESH_INTERVAL
+			_vis_timer = VIS_REFRESH_INTERVAL * (_step_every / (1.0 / 60.0) if _step_every > 0 else 1.0)
 			_update_vis()
 		_vis_shown = true
 	elif _vis_shown:

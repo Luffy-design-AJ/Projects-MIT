@@ -75,7 +75,7 @@ static func generate(cols: int, rows: int, seed_value: int, combo: Array, params
 	# cell ~= the 2304 px open arena, so `k` is cells-per-reference-cell.
 	# Lanes and margins scale too, so the space between obstacles stays a
 	# consistent world width (~`lane_px`) and never a 1-cell maze corridor.
-	var k: float = clampf(float(cols) / 230.0, 0.45, 2.0)
+	var k: float = clampf(float(cols) / 80.0, 0.45, 2.0)
 	motif["scale"] = k
 	motif["gap"] = maxi(2, int(round(float(motif["lane_px"]) * k / 10.0)))
 	motif["margin"] = maxi(3, int(motif["border"]) + int(motif["gap"]))

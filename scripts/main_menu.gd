@@ -18,7 +18,7 @@ const CELL_LABELS := ["10 px (fine)", "16 px", "20 px (coarse)"]
 ## arena is sized to ~2x2 of those frames (4 screens of area): it takes roaming to
 ## see it all, but the camera stays locked on the player.
 const ARENA_1 := Vector2(1280.0, 800.0)
-const ARENA_2 := Vector2(2304.0, 1296.0)
+const ARENA_2 := Vector2(1280.0, 800.0)
 const MAX_PER_TYPE := 4
 const MAX_TOTAL := 10
 

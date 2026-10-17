@@ -26,7 +26,7 @@ func _ready() -> void:
 		canvas_layer.add_child(options_panel)
 		options_panel.setup(swarm_world)
 	var cfg = get_node_or_null("/root/GameConfig")
-	if cfg != null and cfg.mode == cfg.Mode.PROCEDURAL:
+	if cfg != null and cfg.mode != cfg.Mode.SANDBOX:
 		_setup_procedural(cfg)
 	else:
 		_setup_sandbox(cfg)
@@ -37,8 +37,8 @@ func _ready() -> void:
 func _setup_procedural(cfg) -> void:
 	if player != null and swarm_world.level != null:
 		player.global_position = swarm_world.cell_to_world(swarm_world.level.spawn_cell)
-		# The procedural arena is a single readable room, so pull the camera back
-		# from the hand-authored sandbox zoom (8x) to see it.
+		# The procedural arena is larger than one screen, so pull the camera back
+		# from the hand-authored sandbox zoom (8x) to a readable overview.
 		var cam := player.get_node_or_null("Camera2D") as Camera2D
 		if cam != null:
 			cam.zoom = Vector2(3.0, 3.0)

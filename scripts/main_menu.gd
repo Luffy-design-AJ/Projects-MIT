@@ -8,12 +8,15 @@ extends Control
 ##                so what you see is what you play.
 
 const MODE_SANDBOX := 0
-const MODE_PROCEDURAL := 1
+const MODE_PROC_1 := 1
+const MODE_PROC_2 := 2
 
 const CELL_SIZES := [10.0, 16.0, 20.0]
 const CELL_LABELS := ["10 px (fine)", "16 px", "20 px (coarse)"]
-## Procedural arena is a single readable room (sandbox keeps its 1280x800).
-const ARENA := Vector2(640.0, 400.0)
+## Procedural 1 = the classic BSP/maze arena. Procedural 2 = the open arena.
+## The open arena is sized so the player must roam several screens to see it all.
+const ARENA_1 := Vector2(1280.0, 800.0)
+const ARENA_2 := Vector2(960.0, 600.0)
 const MAX_PER_TYPE := 4
 const MAX_TOTAL := 10
 
@@ -88,7 +91,8 @@ func _build_form() -> VBoxContainer:
 	_mode_button = OptionButton.new()
 	_mode_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_mode_button.add_item("Sandbox", MODE_SANDBOX)
-	_mode_button.add_item("Procedural", MODE_PROCEDURAL)
+	_mode_button.add_item("Procedural 1 (maze)", MODE_PROC_1)
+	_mode_button.add_item("Procedural 2 (open)", MODE_PROC_2)
 	_mode_button.item_selected.connect(_on_mode_selected)
 	mode_row.add_child(_mode_button)
 
@@ -247,7 +251,7 @@ func _spacer(height: float) -> Control:
 # ---------------------------------------------------------------------------
 
 func _apply_mode() -> void:
-	var procedural: bool = _mode == MODE_PROCEDURAL
+	var procedural: bool = _mode != MODE_SANDBOX
 	_sandbox_box.visible = not procedural
 	_proc_box.visible = procedural
 	_refresh_preview()
@@ -308,7 +312,7 @@ func _enemy_color(type: int) -> Color:
 
 
 func _refresh_preview() -> void:
-	if _mode != MODE_PROCEDURAL:
+	if _mode == MODE_SANDBOX:
 		return
 	var combo := _selected_types()
 	var parts: Array = []
@@ -324,10 +328,11 @@ func _refresh_preview() -> void:
 		_combo_label.text = "Combo: %s  (%d total)" % [" + ".join(parts), total]
 
 	var cell: float = CELL_SIZES[_cell_button.selected]
-	var cols: int = maxi(1, int(ARENA.x / cell))
-	var rows: int = maxi(1, int(ARENA.y / cell))
-	var seed_value := LevelGenerator.parse_seed(_seed_edit.text)
-	var level := LevelGenerator.generate(cols, rows, seed_value, combo, {})
+	var arena := _arena()
+	var cols: int = maxi(1, int(arena.x / cell))
+	var rows: int = maxi(1, int(arena.y / cell))
+	var seed_value := LevelGenerator2.parse_seed(_seed_edit.text)
+	var level = _generate(cols, rows, seed_value, combo)
 
 	_preview.texture = _make_preview_texture(level)
 	var stats: Dictionary = level.stats
@@ -336,7 +341,19 @@ func _refresh_preview() -> void:
 	]
 
 
-func _make_preview_texture(level: LevelGenerator.Level) -> ImageTexture:
+## The arena for the selected mode (Procedural 1 vs 2).
+func _arena() -> Vector2:
+	return ARENA_1 if _mode == MODE_PROC_1 else ARENA_2
+
+
+## Runs the generator that matches the selected mode.
+func _generate(cols: int, rows: int, seed_value: int, combo: Array):
+	if _mode == MODE_PROC_1:
+		return LevelGenerator1.generate(cols, rows, seed_value, combo, {})
+	return LevelGenerator2.generate(cols, rows, seed_value, combo, {})
+
+
+func _make_preview_texture(level) -> ImageTexture:
 	var img := Image.create(level.cols, level.rows, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0.10, 0.11, 0.15))
 	var floor_col := Color(0.22, 0.24, 0.30)
@@ -365,12 +382,12 @@ func _on_start_pressed() -> void:
 	var cfg = get_node("/root/GameConfig")
 	if cfg == null:
 		return
-	if _mode == MODE_PROCEDURAL:
-		cfg.mode = cfg.Mode.PROCEDURAL
+	if _mode != MODE_SANDBOX:
+		cfg.mode = cfg.Mode.PROCEDURAL_1 if _mode == MODE_PROC_1 else cfg.Mode.PROCEDURAL_2
 		cfg.enemies = _selected_types()
-		cfg.level_seed = LevelGenerator.parse_seed(_seed_edit.text)
+		cfg.level_seed = LevelGenerator2.parse_seed(_seed_edit.text)
 		cfg.cell_size = CELL_SIZES[_cell_button.selected]
-		cfg.arena_size = ARENA
+		cfg.arena_size = _arena()
 		cfg.gen_params = {}
 	else:
 		cfg.mode = cfg.Mode.SANDBOX

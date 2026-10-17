@@ -124,9 +124,12 @@ var food_sources: Array = []
 var deliveries: int = 0
 var show_overlay: bool = false
 
-## --- Procedural level (only populated when GameConfig.mode == PROCEDURAL) ---
+## --- Procedural level (only populated when GameConfig.mode != SANDBOX) ---
 var procedural: bool = false
-var level: LevelGenerator.Level = null
+## 1 = the original BSP/maze generator, 2 = the open arena generator.
+var generator_version: int = 2
+## LevelGenerator1.Level or LevelGenerator2.Level (both expose the same fields).
+var level = null
 var level_seed: int = 0
 var combo: Array = []
 ## Pre-baked wall rectangles (world space), rebuilt once per generation so the
@@ -172,7 +175,7 @@ const VIS_REFRESH_INTERVAL: float = 0.1
 
 func _ready() -> void:
 	var cfg: GameConfig = get_node_or_null("/root/GameConfig") as GameConfig
-	procedural = cfg != null and cfg.mode == cfg.Mode.PROCEDURAL
+	procedural = cfg != null and cfg.mode != cfg.Mode.SANDBOX
 	if procedural:
 		cell_size = cfg.cell_size
 		if cfg.arena_size != Vector2.ZERO:
@@ -208,7 +211,12 @@ func _generate_level(cfg: GameConfig) -> void:
 	combo = cfg.enemies.duplicate()
 	level_seed = cfg.level_seed
 	var params: Dictionary = cfg.gen_params.duplicate(true)
-	level = LevelGenerator.generate(cols, rows, level_seed, combo, params)
+	if cfg.mode == cfg.Mode.PROCEDURAL_1:
+		generator_version = 1
+		level = LevelGenerator1.generate(cols, rows, level_seed, combo, params)
+	else:
+		generator_version = 2
+		level = LevelGenerator2.generate(cols, rows, level_seed, combo, params)
 	field_manager.solid = level.solid
 	_build_wall_rects()
 	for f in get_tree().get_nodes_in_group("food_sources"):

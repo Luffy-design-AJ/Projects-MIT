@@ -1,19 +1,21 @@
 extends RefCounted
-class_name LevelGenerator
+class_name LevelGenerator2
 
-## Procedural level generator.
+## "Procedural 2" - the open arena generator.
 ##
-## DESIGN: an OPEN arena with a few obstacle set-pieces, not a carved maze.
-## Filling the floor and stamping blocks keeps openness high (no thin forced
-## corridors, few chokepoints) so the swarm has room to flow and the arena reads
-## as one space. The enemy combo picks an *archetype* (open field / lanes / ring
-## / quadrants / scatter); the seed varies the exact placement.
+## DESIGN: an open arena of obstacle set-pieces, not a carved maze. The arena is
+## bigger than a screen (so it must be explored), walls cover roughly 30-40% of
+## the floor, and the gaps between blocks stay several cells wide, so the swarm
+## always has room to flow. The enemy combo picks an *archetype* (open field /
+## lanes / ring / quadrants / scatter) that decides the shape of the cover; a
+## bounded "densify" pass then adds fill until the floor sits in the openness
+## band. The seed varies the exact placement, not the archetype.
 ##
 ## Determinism: the same (seed, combo, params) always yields the same level, and
 ## a different combo with the same seed yields a different layout. All randomness
 ## comes from one RNG seeded by a hash of those three.
 ##
-## Performance: O(cells) per attempt (two grid sweeps + placement scans). No
+## Performance: O(cells) per attempt (two grid sweeps + bounded placement). No
 ## pathfinding, because the swarm follows pheromone values, not routes.
 
 class Level:
@@ -40,10 +42,12 @@ const DEFAULTS := {
 	"border": 1,
 	# Archetype set by _apply_motifs from the combo.
 	"archetype": "scatter",
-	"border_margin": 3,
-	"obstacle_gap": 3,
-	"open_lo": 0.72,
-	"open_hi": 0.93,
+	# Target width of the lanes between obstacles, in world px (scaled per grid).
+	"lane_px": 32.0,
+	"open_lo": 0.50,
+	"open_hi": 0.70,
+	## Keep stamping cover until openness falls to at most this (per-archetype).
+	"densify_to": 0.64,
 	"reach_lo": 0.98,
 	"spawn_clear": 3,
 	"enemy_clear": 2,
@@ -65,11 +69,17 @@ static func generate(cols: int, rows: int, seed_value: int, combo: Array, params
 	for k in params.keys():
 		p[k] = params[k]
 	var motif := _apply_motifs(p, combo)
-	# Obstacles are sized in cells, but the arena is a fixed 640x400 px. Scale
-	# block dimensions by the grid so the same archetype keeps the same *world*
-	# footprint (and therefore the same openness) at any cell size. Reference:
-	# the 40x25 grid (cell 16). Clamped so extreme scales stay sane.
-	motif["scale"] = clampf(float(cols) / 40.0, 0.5, 2.2)
+	# Obstacles are sized in cells, but the arena is a fixed width in px, so
+	# scale block dimensions by the grid to keep the same *world* footprint (and
+	# therefore the same openness) at any cell size. Reference: 60 cols, i.e.
+	# the 960 px arena at a 16 px cell, so `k` is cells-per-reference-cell.
+	# Lanes and margins scale too, so the space between obstacles stays a
+	# consistent world width (~`lane_px`) and never a 1-cell maze corridor.
+	var k: float = clampf(float(cols) / 60.0, 0.4, 2.0)
+	motif["scale"] = k
+	motif["gap"] = maxi(2, int(round(float(motif["lane_px"]) * k / 16.0)))
+	motif["margin"] = maxi(3, int(motif["border"]) + int(motif["gap"]))
+	motif["spawn_clear"] = maxi(2, int(round(float(motif["spawn_clear"]) * k)))
 	var base_key: String = "%d|%d|%s" % [seed_value, combo_signature(combo), _param_key(motif)]
 	var attempts: int = maxi(1, int(motif.get("max_attempts", 24)))
 	var last: Level = null
@@ -143,6 +153,17 @@ static func _archetype_for(type: int) -> String:
 	return "scatter"
 
 
+## How dense each archetype is allowed to get (openness ceiling; lower = denser).
+## The open field stays airiest for a duel; quadrants packs the tightest.
+const DENSIFY_TARGETS := {
+	"open_field": 0.67,
+	"lanes": 0.64,
+	"ring": 0.62,
+	"quadrants": 0.60,
+	"scatter": 0.61,
+}
+
+
 ## Count-weighted pick: the most numerous type decides the arena, ties resolved
 ## by a fixed order so the choice is deterministic.
 static func _apply_motifs(p: Dictionary, combo: Array) -> Dictionary:
@@ -161,6 +182,7 @@ static func _apply_motifs(p: Dictionary, combo: Array) -> Dictionary:
 			best_w = w
 			best = key
 	m["archetype"] = best
+	m["densify_to"] = float(DENSIFY_TARGETS.get(best, 0.64))
 	return m
 
 
@@ -176,6 +198,14 @@ static func _attempt(cols: int, rows: int, rng: RandomNumberGenerator, p: Dictio
 	lvl.solid.fill(0)
 	_seal_border(lvl, p)
 	_stamp_archetype(lvl, rng, p)
+	# Reserve an open basin at the centre for the nest, then fill in cover around
+	# it. This guarantees the spawn always has clearance no matter how dense the
+	# rest of the arena gets.
+	var half: int = maxi(2, int(p["spawn_clear"]) + 1)
+	var bc := Vector2i(cols / 2, rows / 2)
+	var basin := Rect2i(bc - Vector2i(half, half), Vector2i(half * 2 + 1, half * 2 + 1))
+	_clear_rect(lvl, basin)
+	_densify(lvl, rng, p, basin)
 
 	var dist_wall := _distance_to_wall(lvl.solid, cols, rows)
 	lvl.spawn_cell = _pick_spawn(lvl, dist_wall, rng, p)
@@ -216,13 +246,13 @@ static func _stamp_archetype(lvl: Level, rng: RandomNumberGenerator, p: Dictiona
 			_stamp_scatter(lvl, rng, p)
 
 
-## A duelling field: a handful of small cover blocks, still very open.
+## A duelling field: a few big cover pillars with room to circle them.
 static func _stamp_open_field(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
 	var placed: Array = []
-	var count := rng.randi_range(3, 5)
+	var count := rng.randi_range(4, 6)
 	for _i in range(count):
-		var w := _scaled(p, rng, 3, 6)
-		var h := _scaled(p, rng, 3, 6)
+		var w := _scaled(p, rng, 5, 9)
+		var h := _scaled(p, rng, 5, 9)
 		if not _random_block(lvl, rng, p, placed, w, h):
 			continue
 
@@ -233,20 +263,80 @@ static func _scaled(p: Dictionary, rng: RandomNumberGenerator, lo: int, hi: int)
 	return maxi(1, int(round(float(rng.randi_range(lo, hi)) * k)))
 
 
+## Keeps stamping medium cover blocks until the arena is dense enough to land in
+## the openness band (tracked incrementally so the loop never rescans the grid).
+## Each block keeps a clear `gap` band from every existing solid cell and never
+## intrudes on the reserved spawn basin, so lanes stay wide and the result reads
+## as cover dotted through the room, not a maze. The loop is bounded: a grid that
+## cannot reach the target simply stops and is rejected by the validator.
+static func _densify(lvl: Level, rng: RandomNumberGenerator, p: Dictionary, basin: Rect2i) -> void:
+	var total: int = lvl.cols * lvl.rows
+	var solid: int = 0
+	for i in range(total):
+		solid += lvl.solid[i]
+	var target: float = float(p.get("densify_to", 0.64))
+	var guard: int = 0
+	while float(total - solid) / float(total) > target and guard < 200:
+		guard += 1
+		# Big blocks first (best coverage), falling back to small ones so leftover
+		# pockets still get filled. Each size gets a batch of random placements.
+		var placed_this: bool = false
+		for attempt in range(48):
+			var lo: int = maxi(4, 14 - (attempt / 8) * 2)
+			var w := _scaled(p, rng, lo, mini(lo + 4, 18))
+			var h := _scaled(p, rng, lo, mini(lo + 4, 18))
+			if _place_free_block(lvl, rng, p, w, h, basin):
+				solid += w * h
+				placed_this = true
+				break
+		if not placed_this:
+			# No legal spot left; stop rather than spin. The validator rejects the
+			# level if it still did not reach the band.
+			break
+
+
+## Places a block only where it keeps a clear `gap` band from every existing
+## solid cell (never sealing a region or leaving a 1-cell passage) and stays out
+## of the reserved spawn basin.
+static func _place_free_block(lvl: Level, rng: RandomNumberGenerator, p: Dictionary, w: int, h: int, basin: Rect2i) -> bool:
+	var margin: int = int(p.get("margin", 4))
+	var gap: int = int(p.get("gap", 3))
+	if lvl.cols - margin * 2 < w or lvl.rows - margin * 2 < h:
+		return false
+	var r := Rect2i(
+		rng.randi_range(margin, lvl.cols - margin - w),
+		rng.randi_range(margin, lvl.rows - margin - h),
+		w, h
+	)
+	if r.intersects(basin):
+		return false
+	var band := r.grow(gap)
+	var x0: int = maxi(0, band.position.x)
+	var y0: int = maxi(0, band.position.y)
+	var x1: int = mini(lvl.cols, band.position.x + band.size.x)
+	var y1: int = mini(lvl.rows, band.position.y + band.size.y)
+	for yy in range(y0, y1):
+		for xx in range(x0, x1):
+			if lvl.solid[yy * lvl.cols + xx] == 1:
+				return false
+	_fill_rect(lvl, r)
+	return true
+
+
 ## Long partial dividers with wide ends: funnels without chokepoints.
 static func _stamp_lanes(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
 	var placed: Array = []
-	var count := rng.randi_range(2, 3)
+	var count := rng.randi_range(3, 4)
 	for _i in range(count):
 		var horizontal := rng.randf() < 0.5
 		var r: Rect2i
 		if horizontal:
 			var len := rng.randi_range(int(lvl.cols * 0.35), int(lvl.cols * 0.6))
-			var thick := _scaled(p, rng, 1, 2)
+			var thick := _scaled(p, rng, 2, 3)
 			r = Rect2i(rng.randi_range(0, lvl.cols - len), rng.randi_range(0, lvl.rows - thick), len, thick)
 		else:
 			var len2 := rng.randi_range(int(lvl.rows * 0.35), int(lvl.rows * 0.6))
-			var thick2 := _scaled(p, rng, 1, 2)
+			var thick2 := _scaled(p, rng, 2, 3)
 			r = Rect2i(rng.randi_range(0, lvl.cols - thick2), rng.randi_range(0, lvl.rows - len2), thick2, len2)
 		_try_place_rect(lvl, r, placed, p)
 
@@ -262,11 +352,12 @@ static func _stamp_quadrants(lvl: Level, rng: RandomNumberGenerator, p: Dictiona
 		Vector2i(3 * lvl.cols / 4, 3 * lvl.rows / 4),
 	]
 	for a in anchors:
-		var w := _scaled(p, rng, 6, 9)
-		var h := _scaled(p, rng, 6, 9)
+		var w := _scaled(p, rng, 8, 12)
+		var h := _scaled(p, rng, 8, 12)
 		var pos: Vector2i = a - Vector2i(w / 2, h / 2) + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
 		if not _try_place_rect(lvl, Rect2i(pos, Vector2i(w, h)), placed, p):
-			_try_place_rect(lvl, Rect2i(pos, Vector2i(5, 5)), placed, p)
+			var fw := _scaled(p, rng, 4, 6)
+			_try_place_rect(lvl, Rect2i(pos, Vector2i(fw, fw)), placed, p)
 	var cw := _scaled(p, rng, 4, 6)
 	var ch := _scaled(p, rng, 4, 6)
 	var c := Vector2i(lvl.cols / 2, lvl.rows / 2)
@@ -280,12 +371,12 @@ static func _stamp_ring(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -
 	var cx := lvl.cols / 2
 	var cy := lvl.rows / 2
 	var base_r := float(mini(lvl.cols, lvl.rows)) * 0.30
-	var count := rng.randi_range(6, 9)
+	var count := rng.randi_range(7, 10)
 	for i in range(count):
 		var ang := TAU * float(i) / float(count) + rng.randf_range(-0.2, 0.2)
 		var rr := base_r + rng.randf_range(-2.0, 2.0)
-		var w := _scaled(p, rng, 3, 5)
-		var h := _scaled(p, rng, 3, 5)
+		var w := _scaled(p, rng, 3, 6)
+		var h := _scaled(p, rng, 3, 6)
 		var px := int(round(float(cx) + cos(ang) * rr)) - w / 2
 		var py := int(round(float(cy) + sin(ang) * rr)) - h / 2
 		_try_place_rect(lvl, Rect2i(px, py, w, h), placed, p)
@@ -294,10 +385,10 @@ static func _stamp_ring(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -
 ## Default: a few medium blocks scattered with breathing room.
 static func _stamp_scatter(lvl: Level, rng: RandomNumberGenerator, p: Dictionary) -> void:
 	var placed: Array = []
-	var count := rng.randi_range(6, 9)
+	var count := rng.randi_range(8, 12)
 	for _i in range(count):
-		var w := _scaled(p, rng, 4, 7)
-		var h := _scaled(p, rng, 4, 7)
+		var w := _scaled(p, rng, 5, 8)
+		var h := _scaled(p, rng, 5, 8)
 		_random_block(lvl, rng, p, placed, w, h)
 
 
@@ -310,8 +401,8 @@ static func _random_block(lvl: Level, rng: RandomNumberGenerator, p: Dictionary,
 ## Places `r`, respecting the border margin and the inter-obstacle gap. When
 ## `randomize_position` is true the position is rolled from the RNG instead.
 static func _try_place_rect(lvl: Level, r: Rect2i, placed: Array, p: Dictionary, randomize_position: bool = false, rng: RandomNumberGenerator = null) -> bool:
-	var margin: int = int(p["border"]) + int(p["border_margin"])
-	var gap: int = int(p["obstacle_gap"])
+	var margin: int = int(p.get("margin", 4))
+	var gap: int = int(p.get("gap", 3))
 	if randomize_position:
 		if lvl.cols - margin * 2 < r.size.x or lvl.rows - margin * 2 < r.size.y:
 			return false
@@ -337,6 +428,13 @@ static func _fill_rect(lvl: Level, r: Rect2i) -> void:
 		for xx in range(r.position.x, r.position.x + r.size.x):
 			if xx >= 0 and xx < lvl.cols and yy >= 0 and yy < lvl.rows:
 				lvl.solid[yy * lvl.cols + xx] = 1
+
+
+static func _clear_rect(lvl: Level, r: Rect2i) -> void:
+	for yy in range(r.position.y, r.position.y + r.size.y):
+		for xx in range(r.position.x, r.position.x + r.size.x):
+			if xx > 0 and xx < lvl.cols - 1 and yy > 0 and yy < lvl.rows - 1:
+				lvl.solid[yy * lvl.cols + xx] = 0
 
 
 # ---------------------------------------------------------------------------

@@ -6,8 +6,9 @@ class_name GameConfig
 enum Choice { NONE, ASSASSIN, PREDATOR, FIREWALL, BROODMOTHER, SIREN }
 
 ## Sandbox = the original hand-authored arena with a single enemy choice.
-## Procedural = a seeded, combo-driven generated level with a multi-select combo.
-enum Mode { SANDBOX, PROCEDURAL }
+## Procedural 1 = the original BSP/maze generator.
+## Procedural 2 = the newer open, combo-driven arena.
+enum Mode { SANDBOX, PROCEDURAL_1, PROCEDURAL_2 }
 
 ## --- Sandbox ---
 var choice: Choice = Choice.NONE
@@ -16,8 +17,8 @@ var choice: Choice = Choice.NONE
 var mode: Mode = Mode.SANDBOX
 ## Selected Enemy.Type ints (order-independent; the combo shapes the layout).
 var enemies: Array = []
-## Base seed. LevelGenerator mixes the combo and params into the actual stream,
-## so the same (seed, combo, params) always reproduces the same level.
+## Base seed. The level generator mixes the combo and params into the actual
+## stream, so the same (seed, combo, params) always reproduces the same level.
 var level_seed: int = 1337
 ## Grid cell size in px: 10 = existing scale, 16/20 = coarser cells.
 var cell_size: float = 10.0

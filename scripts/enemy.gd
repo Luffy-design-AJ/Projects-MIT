@@ -27,6 +27,7 @@ enum SirenState { LURE, WINDUP, SNAP, RECOVER }
 @export var counter_damage_interval: float = 1.0
 
 @export_group("Assassin")
+@export var assassin_max_hp: float = 600.0
 @export var move_speed: float = 90.0
 ## Distance at which the assassin stops stalking and begins a wind-up.
 @export var strike_range: float = 45.0
@@ -158,12 +159,10 @@ func _apply_type() -> void:
 		siren_timer = 0.0
 		siren_snaps = 0
 		_update_label()
-	# The two lure enemies are swarm-immune: the swarm is their prey, so it must
-	# not also be what kills them. It still walks into their fields (those are
-	# pheromone, not targeting) but its attacks and targeting ignore them. Only
-	# the player's melee can finish them. The duelists and Firewall stay
-	# swarm-killable.
-	swarm_immune = type == Type.BROODMOTHER or type == Type.SIREN
+	elif type == Type.ASSASSIN:
+		max_hp = assassin_max_hp
+		hp = max_hp
+		_update_label()
 
 
 func _physics_process(delta: float) -> void:

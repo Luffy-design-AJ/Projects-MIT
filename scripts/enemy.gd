@@ -47,6 +47,10 @@ enum SirenState { LURE, WINDUP, SNAP, RECOVER }
 @export var pred_charge_damage: float = 15.0
 @export var pred_charge_duration: float = 0.6
 @export var pred_recover_time: float = 0.4
+## How often (seconds) SEARCH runs its full cluster scan. Drift movement keeps
+## running every tick between scans, so only the (expensive) scan is throttled.
+@export var pred_search_interval: float = 0.15
+var _pred_search_timer: float = 0.0
 ## Fear flare (WINDUP + STRIKE only): radius in cells and the absolute hunt
 ## value stamped at the centre each frame while flaring. Negative scatters
 ## ants; positive would draw them in. Set to 0 to disable the flare entirely
@@ -103,7 +107,11 @@ var firewall_vel: Vector2 = Vector2.ZERO
 @export var broodmother_emit_per_sec: float = 3.0
 @export var broodmother_steal_radius_cells: float = 4.0
 @export var broodmother_steal_heal: float = 10.0
+## How often (seconds) the delivery-skim scan runs. Throttled from every
+## physics tick; radius, heal and counters are unchanged.
+@export var broodmother_steal_interval: float = 0.12
 var brood_stolen: int = 0
+var _brood_steal_timer: float = 0.0
 
 @export_group("Siren")
 ## Heavy bait: mimics the player's ATTRACT to gather the swarm, then snaps shut
@@ -117,9 +125,13 @@ var brood_stolen: int = 0
 @export var siren_snap_radius_cells: float = 5.0
 @export var siren_snap_damage: float = 1000.0
 @export var siren_recover_time: float = 1.6
+## How often (seconds) the LURE state counts agents around the bait. Same
+## threshold check, just fewer scans per second.
+@export var siren_count_interval: float = 0.15
 var siren_state: int = SirenState.LURE
 var siren_timer: float = 0.0
 var siren_snaps: int = 0
+var _siren_count_timer: float = 0.0
 
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
@@ -137,6 +149,36 @@ var siren_snaps: int = 0
 var awake: bool = false
 var post_pos: Vector2 = Vector2.ZERO
 var _post_assigned: bool = false
+
+@export_group("Rendering")
+## Enemies re-tessellate their canvas only when their look actually changes —
+## state transitions and damage force one; everything else is capped at this
+## rate. Without the cap, a dozen awake enemies re-draw every single frame,
+## which is a large part of the Procedural 3 frame-time spikes.
+@export var redraw_interval: float = 0.1
+var _redraw_accum: float = 0.0
+var _redraw_due: bool = true
+var _redraw_force: bool = false
+
+
+## Refresh the canvas at most `redraw_interval` times a second (or immediately
+## after `_force_redraw()` was requested).
+func _maybe_redraw() -> void:
+	if _redraw_due:
+		queue_redraw()
+
+
+func _force_redraw() -> void:
+	_redraw_force = true
+
+
+## Advances the redraw throttle; called first thing each physics tick.
+func _tick_redraw(delta: float) -> void:
+	_redraw_accum += delta
+	_redraw_due = _redraw_force or _redraw_accum >= redraw_interval
+	if _redraw_due:
+		_redraw_accum = 0.0
+		_redraw_force = false
 
 
 func _ready() -> void:
@@ -185,6 +227,7 @@ func _apply_type() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_tick_redraw(delta)
 	if not _post_assigned:
 		post_pos = global_position
 		_post_assigned = true
@@ -193,11 +236,12 @@ func _physics_process(delta: float) -> void:
 		var player := _nearest_player()
 		if player != null and global_position.distance_to(player.global_position) <= awake_radius:
 			awake = true
+			_force_redraw()
 		else:
 			# Ambush: stay put (behind cover) until the player gets close enough
 			# or attacks. No field is stamped while dormant.
 			_hold_post(world, delta)
-			queue_redraw()
+			_maybe_redraw()
 			return
 	match type:
 		Type.ASSASSIN:
@@ -240,6 +284,7 @@ func _chase_step(speed: float, delta: float, world: SwarmWorld, player: Node2D) 
 
 func take_damage(amount: float) -> void:
 	awake = true
+	_force_redraw()
 	hp = maxf(hp - amount, 0.0)
 	_update_label()
 	if hp <= 0.0 and not dead:
@@ -297,12 +342,13 @@ func _behave_assassin(delta: float) -> void:
 			if state_timer <= 0.0:
 				duel_state = DuelState.STALK
 
-	queue_redraw()
+	_maybe_redraw()
 
 
 func _enter_state(next: int, duration: float) -> void:
 	duel_state = next
 	state_timer = duration
+	_force_redraw()
 
 
 ## Kinematic step kept inside the arena rectangle and, in procedural levels, out
@@ -433,20 +479,24 @@ func _behave_broodmother(delta: float) -> void:
 		_chase_step(broodmother_speed, delta, world, player)
 	# Hijack beacon — the swarm's own loyalty does the pulling.
 	world.stamp_home_field(global_position, broodmother_field_radius_cells, broodmother_emit_per_sec * delta)
-	# Skim deliveries from carrying ants that reach the beacon.
-	var steal_px: float = broodmother_steal_radius_cells * world.cell_size
-	var stole := false
-	for agent in get_tree().get_nodes_in_group("swarm_agents"):
-		if not is_instance_valid(agent) or not agent.carry:
-			continue
-		if global_position.distance_to(agent.global_position) <= steal_px:
-			agent.carry = false
-			brood_stolen += 1
-			hp = minf(hp + broodmother_steal_heal, max_hp)
-			stole = true
-	if stole:
-		_update_label()
-	queue_redraw()
+	# Skim deliveries from carrying ants that reach the beacon. Throttled to
+	# broodmother_steal_interval; radius, heal and counters are unchanged.
+	_brood_steal_timer -= delta
+	if _brood_steal_timer <= 0.0:
+		_brood_steal_timer = broodmother_steal_interval
+		var steal_px: float = broodmother_steal_radius_cells * world.cell_size
+		var stole := false
+		for agent in world.get_swarm_agents():
+			if not is_instance_valid(agent) or not agent.carry:
+				continue
+			if global_position.distance_to(agent.global_position) <= steal_px:
+				agent.carry = false
+				brood_stolen += 1
+				hp = minf(hp + broodmother_steal_heal, max_hp)
+				stole = true
+		if stole:
+			_update_label()
+	_maybe_redraw()
 
 
 ## Heavy bait. Mimics the player's ATTRACT to gather the swarm, telegraphs a
@@ -464,9 +514,12 @@ func _behave_siren(delta: float) -> void:
 	match siren_state:
 		SirenState.LURE:
 			world.stamp_lure_field(global_position, siren_lure_radius_cells, siren_lure_emit_per_sec * delta)
-			if _agents_within(world, siren_lure_radius_cells) >= siren_threshold:
-				siren_state = SirenState.WINDUP
-				siren_timer = siren_windup_time
+			_siren_count_timer -= delta
+			if _siren_count_timer <= 0.0:
+				_siren_count_timer = siren_count_interval
+				if _agents_within(world, siren_lure_radius_cells) >= siren_threshold:
+					siren_state = SirenState.WINDUP
+					siren_timer = siren_windup_time
 		SirenState.WINDUP:
 			# Keep baiting so the swarm does not wander off before the bite.
 			world.stamp_lure_field(global_position, siren_lure_radius_cells, siren_lure_emit_per_sec * delta)
@@ -477,13 +530,14 @@ func _behave_siren(delta: float) -> void:
 		SirenState.RECOVER:
 			if siren_timer <= 0.0:
 				siren_state = SirenState.LURE
-	queue_redraw()
+				_siren_count_timer = 0.0  # count immediately on re-entry, as before
+	_maybe_redraw()
 
 
 func _agents_within(world: SwarmWorld, radius_cells: float) -> int:
 	var r: float = radius_cells * world.cell_size
 	var n := 0
-	for agent in get_tree().get_nodes_in_group("swarm_agents"):
+	for agent in world.get_swarm_agents():
 		if is_instance_valid(agent) and global_position.distance_to(agent.global_position) <= r:
 			n += 1
 	return n
@@ -491,7 +545,7 @@ func _agents_within(world: SwarmWorld, radius_cells: float) -> int:
 
 func _siren_snap(world: SwarmWorld) -> void:
 	var r: float = siren_snap_radius_cells * world.cell_size
-	for agent in get_tree().get_nodes_in_group("swarm_agents"):
+	for agent in world.get_swarm_agents():
 		if is_instance_valid(agent) and global_position.distance_to(agent.global_position) <= r:
 			agent.take_damage(siren_snap_damage)
 	siren_snaps += 1
@@ -504,42 +558,53 @@ func _behave_predator(delta: float) -> void:
 		return
 	pred_state_timer -= delta
 	pred_grace_elapsed += delta
+	_pred_search_timer -= delta
 	if pred_grace_elapsed < 15.0:
 		return
 	match pred_state:
 		PredState.SEARCH:
-			var sum := Vector2.ZERO
-			var count: int = 0
-			var agents = get_tree().get_nodes_in_group("swarm_agents")
-			for agent in agents:
-				var dist := global_position.distance_to(agent.global_position)
-				if dist <= pred_search_radius:
-					sum += agent.global_position
-					count += 1
-			# Also check swarm density near player if player is in range
-			var player := _nearest_player()
-			if count < pred_cluster_threshold and player != null and global_position.distance_to(player.global_position) <= pred_search_radius * 1.2:
-				var pcount: int = 0
-				var psum := Vector2.ZERO
+			if _pred_search_timer <= 0.0:
+				_pred_search_timer = pred_search_interval
+				var sum := Vector2.ZERO
+				var count: int = 0
+				var agents = world.get_swarm_agents()
 				for agent in agents:
-					var dist := player.global_position.distance_to(agent.global_position)
-					if dist <= 90.0:
-						psum += agent.global_position
-						pcount += 1
-				if pcount >= pred_cluster_threshold:
-					sum = psum
-					count = pcount
-			if count >= pred_cluster_threshold:
-				var centroid = sum / float(count)
-				pred_charge_dir = (centroid - global_position)
-				if pred_charge_dir.length() < 0.001:
-					pred_charge_dir = Vector2.RIGHT
+					if not is_instance_valid(agent):
+						continue
+					var dist := global_position.distance_to(agent.global_position)
+					if dist <= pred_search_radius:
+						sum += agent.global_position
+						count += 1
+				# Also check swarm density near player if player is in range
+				var player := _nearest_player()
+				if count < pred_cluster_threshold and player != null and global_position.distance_to(player.global_position) <= pred_search_radius * 1.2:
+					var pcount: int = 0
+					var psum := Vector2.ZERO
+					for agent in agents:
+						if not is_instance_valid(agent):
+							continue
+						var dist := player.global_position.distance_to(agent.global_position)
+						if dist <= 90.0:
+							psum += agent.global_position
+							pcount += 1
+					if pcount >= pred_cluster_threshold:
+						sum = psum
+						count = pcount
+				if count >= pred_cluster_threshold:
+					var centroid = sum / float(count)
+					pred_charge_dir = (centroid - global_position)
+					if pred_charge_dir.length() < 0.001:
+						pred_charge_dir = Vector2.RIGHT
+					else:
+						pred_charge_dir = pred_charge_dir.normalized()
+					pred_hit_set.clear()
+					pred_state = PredState.CHARGE
+					pred_state_timer = pred_charge_duration
 				else:
-					pred_charge_dir = pred_charge_dir.normalized()
-				pred_hit_set.clear()
-				pred_state = PredState.CHARGE
-				pred_state_timer = pred_charge_duration
+					_move_clamped(pred_charge_dir * pred_search_speed * 0.1 * delta, world)
 			else:
+				# Between throttled scans: keep drifting along the last heading,
+				# exactly as the per-tick scan did when it found no cluster.
 				_move_clamped(pred_charge_dir * pred_search_speed * 0.1 * delta, world)
 		PredState.CHARGE:
 			_move_clamped(pred_charge_dir * pred_charge_speed * delta, world)
@@ -557,7 +622,7 @@ func _behave_predator(delta: float) -> void:
 		PredState.RECOVER:
 			if pred_state_timer <= 0.0:
 				pred_state = PredState.SEARCH
-	queue_redraw()
+	_maybe_redraw()
 func _draw_assassin() -> void:
 	match duel_state:
 		DuelState.STALK:

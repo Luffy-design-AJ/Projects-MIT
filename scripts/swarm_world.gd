@@ -144,9 +144,20 @@ const NAV_DIRS: Array[Vector2i] = [
 	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
 ]
 const NAV_REFRESH: float = 0.25
+## Minimum gap between retarget rebuilds (player crossed a cell). Without it
+## every crossing re-ran the BFS, which produced 25-40ms frames while moving.
+const NAV_RETARGET_MIN: float = 0.2
+## Player must move at least this many cells before a retarget rebuild — cell-
+## boundary jitter (standing still, oscillating) never triggers one.
+const NAV_RETARGET_CELLS: int = 2
+## 4-connected BFS rebuild. The neighbour checks are unrolled inline (see
+## _rebuild_nav_flow): an inline array literal used to be allocated once per
+## visited cell — ~10k allocations per rebuild, i.e. a 25-40ms frame.
 var _nav_flow: PackedInt32Array = PackedInt32Array()
+var _nav_queue: PackedInt32Array = PackedInt32Array()
 var _nav_target: Vector2i = Vector2i(-999, -999)
 var _nav_timer: float = 0.0
+var _nav_retarget_gap_left: float = 0.0
 
 var field_manager: ScalarFieldManager
 var ant_manager: AntManager
@@ -181,6 +192,10 @@ var _bomb_timer: float = 0.0
 ## Firewall enemies (group "firewalls"), refreshed each physics tick so the
 ## distortion query stays cheap. Empty when no firewall is present.
 var _firewalls: Array = []
+## Cached "swarm_agents" group, refreshed once per physics tick. Enemies read
+## this instead of calling get_nodes_in_group() themselves, which used to cost
+## one full tree scan per Broodmother/Siren/Predator per frame.
+var _cached_agents: Array = []
 
 const VIS_REFRESH_INTERVAL: float = 0.1
 ## Adaptive update rate for very large grids. When the grid is > ~1.5M cells,
@@ -228,6 +243,9 @@ func _ready() -> void:
 	ant_manager = AntManager.new()
 	add_child(ant_manager)
 	ant_manager.setup(self, ant_count)
+	# Prime the agent cache so enemies that tick before the world's first
+	# physics frame still see the colony.
+	_cached_agents = get_tree().get_nodes_in_group("swarm_agents")
 
 
 ## Builds the procedural level, installs its walls into the shared solid grid
@@ -623,6 +641,8 @@ func _zero_all_fields() -> void:
 func _physics_process(delta: float) -> void:
 	if _nav_timer > 0.0:
 		_nav_timer -= delta
+	if _nav_retarget_gap_left > 0.0:
+		_nav_retarget_gap_left -= delta
 	if _pheromone_locked:
 		_zero_all_fields()
 	_firewalls = get_tree().get_nodes_in_group("firewalls")
@@ -667,6 +687,8 @@ func _physics_process(delta: float) -> void:
 		_update_accum = fmod(_update_accum, _step_every)
 		field_manager.step(_step_dt)
 		ant_manager.step(_step_dt)
+	# One group scan per tick for every enemy to share.
+	_cached_agents = get_tree().get_nodes_in_group("swarm_agents")
 
 	if not _active_cast.is_empty():
 		var timer: float = _active_cast["timer"] - delta
@@ -710,6 +732,12 @@ func _physics_process(delta: float) -> void:
 	# Walls, the arena border and the (player-following) nest are all drawn in
 	# `_draw`, so keep the canvas fresh even with the overlay hidden.
 	queue_redraw()
+
+
+## Shared view of the swarm for enemy behaviours (Broodmother skim, Siren
+## threshold, Predator cluster search). Refreshed once per physics tick.
+func get_swarm_agents() -> Array:
+	return _cached_agents
 
 
 ## Player emit: stamps the shared hunt field at the emitter's cell.
@@ -1270,7 +1298,12 @@ func path_dir(from_world: Vector2, target_world: Vector2) -> Vector2:
 	if not procedural or cols <= 0 or rows <= 0 or field_manager == null:
 		return Vector2.ZERO
 	var tcell := world_to_cell(target_world).clamp(Vector2i.ZERO, Vector2i(cols - 1, rows - 1))
-	if _nav_flow.size() != cols * rows or tcell != _nav_target or _nav_timer <= 0.0:
+	# Rebuild only when the flow is missing, or the target really moved
+	# (NAV_RETARGET_CELLS to ignore jitter, NAV_RETARGET_MIN to cap the rate).
+	# A stationary player needs no refresh: walls never change.
+	var moved: int = absi(tcell.x - _nav_target.x) + absi(tcell.y - _nav_target.y)
+	if _nav_flow.size() != cols * rows \
+			or (moved >= NAV_RETARGET_CELLS and _nav_retarget_gap_left <= 0.0):
 		_rebuild_nav_flow(tcell)
 	var fcell := world_to_cell(from_world).clamp(Vector2i.ZERO, Vector2i(cols - 1, rows - 1))
 	var fi := fcell.y * cols + fcell.x
@@ -1296,8 +1329,9 @@ func path_dir(from_world: Vector2, target_world: Vector2) -> Vector2:
 	return to.normalized()
 
 
-## Rebuilds the shared BFS field toward `start`. A few thousand cells is cheap,
-## and the refresh timer is reset here so only one rebuild happens per window.
+## Rebuilds the shared BFS field toward `start`. The queue is pre-allocated and
+## the loop is unrolled so a full-grid sweep stays well under a frame budget —
+## this runs from the enemy hot path, and a slow rebuild is a dropped frame.
 func _rebuild_nav_flow(start: Vector2i) -> void:
 	var n := cols * rows
 	if _nav_flow.size() != n:
@@ -1305,28 +1339,52 @@ func _rebuild_nav_flow(start: Vector2i) -> void:
 	_nav_flow.fill(-1)
 	_nav_target = start
 	_nav_timer = NAV_REFRESH
+	_nav_retarget_gap_left = NAV_RETARGET_MIN
 	if blocked(start.x, start.y):
 		return
 	var si := start.y * cols + start.x
 	_nav_flow[si] = 0
-	var queue := PackedInt32Array([si])
+	if _nav_queue.size() != n:
+		_nav_queue.resize(n)
+	_nav_queue[0] = si
 	var head: int = 0
-	while head < queue.size():
-		var i: int = queue[head]
+	var tail: int = 1
+	var solid := field_manager.solid
+	while head < tail:
+		var i: int = _nav_queue[head]
 		head += 1
 		var cx: int = i % cols
 		var cy: int = i / cols
 		var nd: int = _nav_flow[i] + 1
-		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			var nx: int = cx + dir.x
-			var ny: int = cy + dir.y
-			if nx < 0 or nx >= cols or ny < 0 or ny >= rows:
-				continue
-			var ni: int = ny * cols + nx
-			if _nav_flow[ni] != -1 or field_manager.solid[ni] == 1:
-				continue
-			_nav_flow[ni] = nd
-			queue.append(ni)
+		var ni: int
+		var nx: int = cx + 1
+		if nx < cols:
+			ni = cy * cols + nx
+			if _nav_flow[ni] == -1 and solid[ni] == 0:
+				_nav_flow[ni] = nd
+				_nav_queue[tail] = ni
+				tail += 1
+		nx = cx - 1
+		if nx >= 0:
+			ni = cy * cols + nx
+			if _nav_flow[ni] == -1 and solid[ni] == 0:
+				_nav_flow[ni] = nd
+				_nav_queue[tail] = ni
+				tail += 1
+		var ny: int = cy + 1
+		if ny < rows:
+			ni = ny * cols + cx
+			if _nav_flow[ni] == -1 and solid[ni] == 0:
+				_nav_flow[ni] = nd
+				_nav_queue[tail] = ni
+				tail += 1
+		ny = cy - 1
+		if ny >= 0:
+			ni = ny * cols + cx
+			if _nav_flow[ni] == -1 and solid[ni] == 0:
+				_nav_flow[ni] = nd
+				_nav_queue[tail] = ni
+				tail += 1
 
 
 func get_field(field_name: String) -> ScalarField:

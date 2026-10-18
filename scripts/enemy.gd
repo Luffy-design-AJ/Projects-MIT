@@ -177,6 +177,11 @@ func _apply_type() -> void:
 		max_hp = assassin_max_hp
 		hp = max_hp
 		_update_label()
+	# Enemies the swarm simply cannot bite: the Predator soaks up ants without
+	# taking damage from them, and the lure enemies (Broodmother, Siren) would
+	# otherwise be destroyed by the very ants they attract. All three stay in the
+	# "swarm_targets" group on purpose so the player's melee can still finish them.
+	swarm_immune = type == Type.PREDATOR or type == Type.BROODMOTHER or type == Type.SIREN
 
 
 func _physics_process(delta: float) -> void:

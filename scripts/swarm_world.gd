@@ -492,9 +492,9 @@ func _issue_bomb_attract() -> void:
 
 
 ## The enemies the swarm is allowed to engage: `swarm_targets` minus any that
-## are `swarm_immune`. Lure enemies (Broodmother, Siren) are excluded here, so
-## the swarm never targets them — while the player's melee keeps reading the raw
-## "swarm_targets" group and can still finish them.
+## are `swarm_immune` (the Predator and the lure enemies Broodmother / Siren).
+## Those are excluded here, so the swarm never targets them — while the player's
+## melee keeps reading the raw "swarm_targets" group and can still finish them.
 func swarm_targets() -> Array:
 	var out: Array = []
 	for t in get_tree().get_nodes_in_group("swarm_targets"):

@@ -11,8 +11,8 @@ class_name SwarmTarget
 ## and the swarm's own targeting skip it. It stays in the "swarm_targets" group
 ## on purpose, because the player's melee reads that group directly — so a
 ## swarm-immune enemy remains killable, just only by the player. Used by the
-## lure enemies (Broodmother, Siren), which would otherwise be destroyed by the
-## very ants they attract.
+## Predator (ants cannot bite it) and the lure enemies (Broodmother, Siren),
+## which would otherwise be destroyed by the very ants they attract.
 var swarm_immune: bool = false
 
 func _ready() -> void:

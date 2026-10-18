@@ -709,8 +709,8 @@ func _resolve_combat(delta: float) -> void:
 	for area in get_overlapping_areas():
 		if not area.is_in_group("swarm_targets") or not area.has_method("take_damage"):
 			continue
-		# Lure enemies (Broodmother, Siren) are immune to the swarm: it cannot
-		# kill the very thing it is drawn to. The player's melee is the answer.
+		# Swarm-immune enemies (the Predator, and the lure enemies Broodmother /
+		# Siren) take no contact damage. The player's melee is the answer.
 		if area.swarm_immune:
 			continue
 		area.take_damage(DOT_PER_SECOND * delta)

@@ -159,7 +159,7 @@ func _build_form() -> VBoxContainer:
 		grid.add_child(plus)
 
 	var cap := Label.new()
-	cap.text = "Max %d per enemy, %d total" % [MAX_PER_TYPE, MAX_TOTAL]
+	cap.text = "Pick max %d per enemy, %d total. Bigger / more open arenas field extra." % [MAX_PER_TYPE, MAX_TOTAL]
 	cap.add_theme_color_override("font_color", Color(0.65, 0.68, 0.74))
 	_proc_box.add_child(cap)
 
@@ -334,7 +334,7 @@ func _refresh_preview() -> void:
 	var cols: int = maxi(1, int(arena.x / cell))
 	var rows: int = maxi(1, int(arena.y / cell))
 	var seed_value := LevelGenerator2.parse_seed(_seed_edit.text)
-	var level = _generate(cols, rows, seed_value, combo)
+	var level = _generate(cols, rows, seed_value, combo, cell)
 
 	_preview.texture = _make_preview_texture(level)
 	var stats: Dictionary = level.stats
@@ -349,10 +349,10 @@ func _arena() -> Vector2:
 
 
 ## Runs the generator that matches the selected mode.
-func _generate(cols: int, rows: int, seed_value: int, combo: Array):
+func _generate(cols: int, rows: int, seed_value: int, combo: Array, cell: float = 10.0):
 	if _mode == MODE_PROC_1:
 		return LevelGenerator1.generate(cols, rows, seed_value, combo, {})
-	return LevelGenerator2.generate(cols, rows, seed_value, combo, {})
+	return LevelGenerator2.generate(cols, rows, seed_value, combo, {"cell_size": cell})
 
 
 func _make_preview_texture(level) -> ImageTexture:

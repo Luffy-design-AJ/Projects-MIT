@@ -54,6 +54,20 @@ const DEFAULTS := {
 	"enemy_ring_min": 0.32,
 	"enemy_ring_max": 0.72,
 	"enemy_min_sep": 6,
+	## Threat budget. The arena fields at least this many enemies (scaled by its
+	## world area and how open it is), so a bigger / airier arena is not easier.
+	## The player's hand-picked combo is always a floor. Set threat_scaling=false
+	## to place exactly the picked combo again.
+	"threat_scaling": true,
+	"enemy_budget_base": 6,
+	"enemy_budget_ref_area": 1280.0 * 800.0,
+	"enemy_budget_ref_open": 0.60,
+	## Score band (in cells) within which a post is preferred if it has no line
+	## of sight to the nest — i.e. it hides behind cover for an ambush.
+	"ambush_band": 6.0,
+	## World px of the cell size the grid was built at, so the budget can measure
+	## the arena's real footprint regardless of how coarse the grid is.
+	"cell_size": 10.0,
 	"food_count": 3,
 	"food_amount": 200,
 	"food_min_sep": 8,
@@ -212,7 +226,12 @@ static func _attempt(cols: int, rows: int, rng: RandomNumberGenerator, p: Dictio
 
 	var reach := _reachable(lvl.solid, cols, rows, lvl.spawn_cell)
 	_place_food(lvl, reach, rng, p)
-	_place_enemies(lvl, reach, dist_wall, rng, p, combo)
+	# Threat scales with the arena's real footprint and how open it is, so a
+	# larger / airier layout is not quietly easier than a cramped one.
+	var openness := _openness_frac(lvl)
+	var target := _enemy_target_count(p, cols, rows, openness, combo)
+	p["enemy_target"] = target
+	_place_enemies(lvl, reach, dist_wall, rng, p, combo, target)
 
 	lvl.stats = _validate(lvl, dist_wall, reach, p, combo)
 	return lvl
@@ -580,10 +599,13 @@ static func _tier_fractions(count: int) -> Array:
 	return out
 
 
-## Distributes every enemy instance around the nest on an angular ring, instead
-## of scoring them into one far corner. Search is by expanding distance from the
-## desired spot, relaxing clearance and separation if the grid is crowded.
-static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32Array, rng: RandomNumberGenerator, p: Dictionary, combo: Array) -> void:
+## Places every enemy with intent instead of sprinkling them on a clean ring:
+## control types (Assassin, Firewall) are posted at the arena's doorways so they
+## hold a route; Predators start close (they close fast); the landmark types
+## (Siren, Broodmother) sit on open ground. Most posts are chosen to have no line
+## of sight to the nest, so enemies start behind cover and ambush an exploring
+## player. The budget can field more instances than were hand-picked.
+static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32Array, rng: RandomNumberGenerator, p: Dictionary, combo: Array, target: int = -1) -> void:
 	if combo.is_empty():
 		return
 	var reach_dist: PackedInt32Array = reach["dist"]
@@ -591,6 +613,15 @@ static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32
 	for c in combo:
 		order.append(int(c))
 	order.sort()
+	if target < 0:
+		target = order.size()
+	target = maxi(target, order.size())
+
+	# Fill the threat budget by cycling the chosen types, so any extra pressure is
+	# still made of enemies the player actually selected.
+	var plan: Array = []
+	for i in range(target):
+		plan.append(order[i % order.size()])
 
 	var half := Vector2(float(lvl.cols), float(lvl.rows)) * 0.5
 	var ring_scale := minf(half.x, half.y)
@@ -599,23 +630,44 @@ static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32
 	var food_cells: Array = []
 	for f in lvl.food:
 		food_cells.append(f["cell"])
+	var doors := _door_cells(lvl, dist_wall, reach_dist, lvl.spawn_cell)
 
-	var n := order.size()
+	var n := plan.size()
 	for k in range(n):
-		var type: int = order[k]
-		var ang := base_angle + TAU * float(k) / float(n) + rng.randf_range(-0.15, 0.15)
-		var rfrac := clampf(
-			rng.randf_range(float(p["enemy_ring_min"]), float(p["enemy_ring_max"])) * _ring_type_scale(type),
-			0.12, 0.62
-		)
-		var desired := Vector2i(
-			int(round(float(lvl.spawn_cell.x) + cos(ang) * rfrac * ring_scale)),
-			int(round(float(lvl.spawn_cell.y) + sin(ang) * rfrac * ring_scale))
-		)
-		var cell := _find_enemy_cell(lvl, desired, reach_dist, dist_wall, placed, type, rng, p, food_cells)
+		var type: int = plan[k]
+		var role := _placement_role(type)
+		var desired: Vector2i
+		if role == "door" and not doors.is_empty():
+			desired = _pick_door(lvl, doors, placed, lvl.spawn_cell)
+		else:
+			var ang := base_angle + TAU * float(k) / float(n) + rng.randf_range(-0.15, 0.15)
+			var lo := float(p["enemy_ring_min"]) * _ring_type_scale(type)
+			var hi := float(p["enemy_ring_max"]) * _ring_type_scale(type)
+			if role == "close":
+				lo = minf(lo, 0.15)
+				hi = minf(hi, 0.32)
+			var rfrac := clampf(rng.randf_range(lo, hi), 0.12, 0.72)
+			desired = Vector2i(
+				int(round(float(lvl.spawn_cell.x) + cos(ang) * rfrac * ring_scale)),
+				int(round(float(lvl.spawn_cell.y) + sin(ang) * rfrac * ring_scale))
+			)
+		# Control and landmark posts hide behind cover; a Predator charges in the
+		# open, so it does not ask for a hidden post.
+		var prefer_hidden: bool = role != "close"
+		var cell := _find_enemy_cell(lvl, desired, reach_dist, dist_wall, placed, type, rng, p, food_cells, prefer_hidden)
 		if cell.x >= 0:
 			placed.append(cell)
 			lvl.enemies.append({"type": type, "cell": cell})
+
+
+## Which tactical role a type plays in placement.
+static func _placement_role(type: int) -> String:
+	match type:
+		Enemy.Type.ASSASSIN, Enemy.Type.FIREWALL:
+			return "door"      # holds a doorway / route
+		Enemy.Type.PREDATOR:
+			return "close"     # spawns near and closes fast, out in the open
+	return "landmark"          # Siren / Broodmother / others: open ground
 
 
 static func _ring_type_scale(type: int) -> float:
@@ -632,13 +684,15 @@ static func _ring_type_scale(type: int) -> float:
 
 
 ## Nearest open, reachable cell to `desired` that satisfies the type's clearance
-## and the pack separation. Relaxes both on later passes so a cell always lands.
-static func _find_enemy_cell(lvl: Level, desired: Vector2i, reach_dist: PackedInt32Array, dist_wall: PackedInt32Array, placed: Array, type: int, rng: RandomNumberGenerator, p: Dictionary, food_cells: Array) -> Vector2i:
+## and the pack separation, preferring a post hidden from the nest when asked.
+## Relaxes clearance and separation on later passes so a cell always lands.
+static func _find_enemy_cell(lvl: Level, desired: Vector2i, reach_dist: PackedInt32Array, dist_wall: PackedInt32Array, placed: Array, type: int, rng: RandomNumberGenerator, p: Dictionary, food_cells: Array, prefer_hidden: bool = false) -> Vector2i:
 	var clear: int = int(p["enemy_clear"])
 	match type:
 		Enemy.Type.ASSASSIN, Enemy.Type.SIREN:
 			clear = 3
 	var sep: int = int(p["enemy_min_sep"])
+	var band: float = float(p.get("ambush_band", 6.0))
 	for relax in range(3):
 		var need_clear: int = maxi(1, clear - relax)
 		var need_sep: int = maxi(3, sep - relax * 3)
@@ -651,17 +705,137 @@ static func _find_enemy_cell(lvl: Level, desired: Vector2i, reach_dist: PackedIn
 					continue
 				if _too_close(Vector2i(x, y), placed, need_sep):
 					continue
-				var score := Vector2(x, y).distance_to(Vector2(desired))
-				if type == Enemy.Type.BROODMOTHER:
-					score += float(_nearest_food_dist(Vector2i(x, y), food_cells)) * 0.4
-				elif type == Enemy.Type.SIREN or type == Enemy.Type.FIREWALL:
-					score -= float(mini(dist_wall[i], 6)) * 0.6  # wants a big landmark
+				var score := _enemy_score(lvl, Vector2i(x, y), desired, dist_wall, p, type, food_cells)
 				if score < best_score:
 					best_score = score
 					best = Vector2i(x, y)
-		if best.x >= 0:
-			return best
+		if best.x < 0:
+			continue
+		if prefer_hidden:
+			# Second pass, bounded to the near-best band, looking for a post that
+			# is not visible from the nest (behind cover) so it can ambush.
+			var hid := Vector2i(-1, -1)
+			var hid_score := INF
+			for y in range(1, lvl.rows - 1):
+				for x in range(1, lvl.cols - 1):
+					var i: int = y * lvl.cols + x
+					if lvl.solid[i] == 1 or reach_dist[i] < 0 or dist_wall[i] < need_clear:
+						continue
+					if _too_close(Vector2i(x, y), placed, need_sep):
+						continue
+					var score := _enemy_score(lvl, Vector2i(x, y), desired, dist_wall, p, type, food_cells)
+					if score <= best_score + band and score < hid_score and not _has_los(lvl, Vector2i(x, y), lvl.spawn_cell):
+						hid_score = score
+						hid = Vector2i(x, y)
+			if hid.x >= 0:
+				return hid
+		return best
 	return Vector2i(-1, -1)
+
+
+## Placement score for a candidate cell: closeness to the desired post, nudged by
+## type (Broodmother slightly toward food routes, Siren/Firewall toward open
+## landmarks). Food is not a placement rule of its own — this is only a nudge.
+static func _enemy_score(lvl: Level, cell: Vector2i, desired: Vector2i, dist_wall: PackedInt32Array, p: Dictionary, type: int, food_cells: Array) -> float:
+	var score := Vector2(cell).distance_to(Vector2(desired))
+	if type == Enemy.Type.BROODMOTHER:
+		score += float(_nearest_food_dist(cell, food_cells)) * 0.4
+	elif type == Enemy.Type.SIREN or type == Enemy.Type.FIREWALL:
+		var i: int = cell.y * lvl.cols + cell.x
+		score -= float(mini(dist_wall[i], 6)) * 0.6  # wants a big landmark
+	return score
+
+
+## Interior cells that sit in a pinch — few open cells in their 3x3 box and right
+## next to a wall — i.e. the doorways between open regions. The nest basin and
+## the outer border ring are excluded so a "door" is a real pinch, not the edge.
+static func _door_cells(lvl: Level, dist_wall: PackedInt32Array, reach_dist: PackedInt32Array, spawn_cell: Vector2i) -> Array:
+	var out: Array = []
+	for y in range(2, lvl.rows - 2):
+		for x in range(2, lvl.cols - 2):
+			var i: int = y * lvl.cols + x
+			if lvl.solid[i] == 1 or reach_dist[i] < 0 or dist_wall[i] > 1:
+				continue
+			var cell := Vector2i(x, y)
+			if (cell - spawn_cell).length_squared() < 100:
+				continue
+			var open_nb: int = 0
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if lvl.solid[(y + dy) * lvl.cols + (x + dx)] == 0:
+						open_nb += 1
+			if open_nb <= 6:
+				out.append(cell)
+	return out
+
+
+## Picks the door farthest from the nest and from any already-placed enemy, so
+## control enemies spread across separate routes. Deterministic.
+static func _pick_door(lvl: Level, doors: Array, placed: Array, spawn_cell: Vector2i) -> Vector2i:
+	var best: Vector2i = doors[0]
+	var best_score := -1.0
+	for d in doors:
+		var dv := Vector2(d)
+		var score := dv.distance_to(Vector2(spawn_cell))
+		for c in placed:
+			score += minf(dv.distance_to(Vector2(c)), 24.0) * 0.8
+		if score > best_score:
+			best_score = score
+			best = d
+	return best
+
+
+## Bresenham line-of-sight on the grid: true when the straight line between two
+## cells crosses no solid cell (the endpoints themselves are not tested).
+static func _has_los(lvl: Level, a: Vector2i, b: Vector2i) -> bool:
+	var x0: int = a.x
+	var y0: int = a.y
+	var dx: int = absi(b.x - x0)
+	var dy: int = -absi(b.y - y0)
+	var sx: int = 1 if x0 < b.x else -1
+	var sy: int = 1 if y0 < b.y else -1
+	var err: int = dx + dy
+	while true:
+		if not (x0 == a.x and y0 == a.y):
+			if x0 < 0 or x0 >= lvl.cols or y0 < 0 or y0 >= lvl.rows:
+				return false
+			if lvl.solid[y0 * lvl.cols + x0] == 1:
+				return false
+		if x0 == b.x and y0 == b.y:
+			break
+		var e2: int = 2 * err
+		if e2 >= dy:
+			err += dy
+			x0 += sx
+		if e2 <= dx:
+			err += dx
+			y0 += sy
+	return true
+
+
+## Open fraction of the whole grid (walls included), measured before enemies are
+## placed so the threat budget can see how airy the arena ended up.
+static func _openness_frac(lvl: Level) -> float:
+	var n: int = lvl.cols * lvl.rows
+	var open_count: int = 0
+	for i in range(n):
+		if lvl.solid[i] == 0:
+			open_count += 1
+	return float(open_count) / float(maxi(1, n))
+
+
+## Enemy count the arena should field: the chosen combo is a floor, and a bigger,
+## airier arena raises it (so open space is not free). Disabled by threat_scaling.
+static func _enemy_target_count(p: Dictionary, cols: int, rows: int, openness: float, combo: Array) -> int:
+	var base: int = combo.size()
+	if base == 0 or not bool(p.get("threat_scaling", true)):
+		return base
+	var cell_px: float = float(p.get("cell_size", 10.0))
+	var world_area: float = float(cols) * cell_px * float(rows) * cell_px
+	var area_factor: float = world_area / float(p["enemy_budget_ref_area"])
+	var open_factor: float = openness / maxf(0.01, float(p["enemy_budget_ref_open"]))
+	var budget: int = int(round(float(p["enemy_budget_base"]) * area_factor * open_factor))
+	return maxi(base, budget)
 
 
 static func _nearest_food_dist(cell: Vector2i, food_cells: Array) -> int:
@@ -709,7 +883,8 @@ static func _validate(lvl: Level, dist_wall: PackedInt32Array, reach: Dictionary
 		if reach_dist[c.y * lvl.cols + c.x] < 0:
 			food_ok = false
 
-	var enemy_ok: bool = lvl.enemies.size() == combo.size()
+	var enemy_target: int = int(p.get("enemy_target", combo.size()))
+	var enemy_ok: bool = lvl.enemies.size() == enemy_target
 	for e in lvl.enemies:
 		var c: Vector2i = e["cell"]
 		var i2: int = c.y * lvl.cols + c.x

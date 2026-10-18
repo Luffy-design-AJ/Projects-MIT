@@ -124,6 +124,20 @@ var siren_snaps: int = 0
 @onready var counter_damage_timer: Timer = $CounterDamageTimer
 @onready var hp_label: Label = $HPLabel
 
+@export_group("Navigation (procedural)")
+## Procedural enemies route around walls through the world's shared flow field
+## instead of grinding straight along them. Sandbox ignores this entirely.
+@export var use_navigation: bool = true
+## A procedural enemy holds its post until the player comes within this many
+## world px (or damages it), then wakes and pursues for good.
+@export var awake_radius: float = 260.0
+## How far an un-woken enemy may drift from its post before it walks back.
+@export var post_leash: float = 48.0
+
+var awake: bool = false
+var post_pos: Vector2 = Vector2.ZERO
+var _post_assigned: bool = false
+
 
 func _ready() -> void:
 	super._ready()
@@ -166,6 +180,20 @@ func _apply_type() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if not _post_assigned:
+		post_pos = global_position
+		_post_assigned = true
+	var world := _get_world()
+	if world != null and world.procedural and not awake:
+		var player := _nearest_player()
+		if player != null and global_position.distance_to(player.global_position) <= awake_radius:
+			awake = true
+		else:
+			# Ambush: stay put (behind cover) until the player gets close enough
+			# or attacks. No field is stamped while dormant.
+			_hold_post(world, delta)
+			queue_redraw()
+			return
 	match type:
 		Type.ASSASSIN:
 			_behave_assassin(delta)
@@ -179,7 +207,34 @@ func _physics_process(delta: float) -> void:
 			_behave_siren(delta)
 
 
+## Keeps an un-woken enemy near the post it was placed at, so it guards the spot
+## rather than wandering off. Only runs in procedural modes.
+func _hold_post(world: SwarmWorld, delta: float) -> void:
+	var to_post := post_pos - global_position
+	if to_post.length() > post_leash:
+		_move_clamped(to_post.normalized() * move_speed * 0.6 * delta, world)
+
+
+## One approach step toward the player: straight in sandbox, routed around walls
+## and through doorways via the world's flow field in procedural levels.
+func _chase_step(speed: float, delta: float, world: SwarmWorld, player: Node2D) -> void:
+	if player == null:
+		return
+	var dir := player.global_position - global_position
+	if dir.length_squared() > 0.0001:
+		dir = dir.normalized()
+	else:
+		dir = Vector2.ZERO
+	if use_navigation and world.procedural:
+		var nav: Vector2 = world.path_dir(global_position, player.global_position)
+		if nav != Vector2.ZERO:
+			dir = nav
+	if dir != Vector2.ZERO:
+		_move_clamped(dir * speed * delta, world)
+
+
 func take_damage(amount: float) -> void:
+	awake = true
 	hp = maxf(hp - amount, 0.0)
 	_update_label()
 	if hp <= 0.0 and not dead:
@@ -208,7 +263,7 @@ func _behave_assassin(delta: float) -> void:
 				struck_this_strike = false
 				_enter_state(DuelState.WINDUP, windup_time)
 			else:
-				_move_clamped(to_player.normalized() * move_speed * delta, world)
+				_chase_step(move_speed, delta, world, player)
 		DuelState.WINDUP:
 			if aura_strength != 0.0:
 				world.stamp_enemy_field(global_position, aura_radius_cells, aura_strength)
@@ -351,6 +406,10 @@ func _behave_firewall(delta: float) -> void:
 	var dir := Vector2.ZERO
 	if to_target.length_squared() > 0.01:
 		dir = to_target.normalized()
+	if use_navigation and world.procedural and player != null:
+		var nav: Vector2 = world.path_dir(global_position, player.global_position)
+		if nav != Vector2.ZERO:
+			dir = nav
 	var desired_vel := dir * firewall_speed
 	firewall_vel = firewall_vel.move_toward(desired_vel, firewall_accel * delta)
 	_move_clamped(firewall_vel * delta, world)
@@ -366,9 +425,7 @@ func _behave_broodmother(delta: float) -> void:
 		return
 	var player := _nearest_player()
 	if player != null:
-		var to_player: Vector2 = player.global_position - global_position
-		if to_player.length_squared() > 0.01:
-			_move_clamped(to_player.normalized() * broodmother_speed * delta, world)
+		_chase_step(broodmother_speed, delta, world, player)
 	# Hijack beacon — the swarm's own loyalty does the pulling.
 	world.stamp_home_field(global_position, broodmother_field_radius_cells, broodmother_emit_per_sec * delta)
 	# Skim deliveries from carrying ants that reach the beacon.
@@ -397,9 +454,8 @@ func _behave_siren(delta: float) -> void:
 	siren_timer -= delta
 	var player := _nearest_player()
 	if player != null:
-		var to_player: Vector2 = player.global_position - global_position
-		if to_player.length_squared() > 0.01 and siren_state != SirenState.SNAP:
-			_move_clamped(to_player.normalized() * siren_speed * delta, world)
+		if siren_state != SirenState.SNAP:
+			_chase_step(siren_speed, delta, world, player)
 	match siren_state:
 		SirenState.LURE:
 			world.stamp_lure_field(global_position, siren_lure_radius_cells, siren_lure_emit_per_sec * delta)

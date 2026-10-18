@@ -136,6 +136,18 @@ var combo: Array = []
 ## draw pass never walks the grid.
 var _wall_rects: Array = []
 
+## Enemy navigation: a BFS distance-to-player field over the open grid, shared by
+## every procedural enemy so they route around walls and through doorways instead
+## of grinding along them. Only used in procedural modes — sandbox is unchanged.
+const NAV_DIRS: Array[Vector2i] = [
+	Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1),
+]
+const NAV_REFRESH: float = 0.25
+var _nav_flow: PackedInt32Array = PackedInt32Array()
+var _nav_target: Vector2i = Vector2i(-999, -999)
+var _nav_timer: float = 0.0
+
 var field_manager: ScalarFieldManager
 var ant_manager: AntManager
 var _sticky_timer: float = 0.0
@@ -225,6 +237,9 @@ func _generate_level(cfg: GameConfig) -> void:
 	combo = cfg.enemies.duplicate()
 	level_seed = cfg.level_seed
 	var params: Dictionary = cfg.gen_params.duplicate(true)
+	# Pass the grid's real cell size so the generator can size its threat budget
+	# off the arena's true footprint rather than the (coarser) cell count.
+	params["cell_size"] = cell_size
 	if cfg.mode == cfg.Mode.PROCEDURAL_1:
 		generator_version = 1
 		level = LevelGenerator1.generate(cols, rows, level_seed, combo, params)
@@ -601,6 +616,8 @@ func _zero_all_fields() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if _nav_timer > 0.0:
+		_nav_timer -= delta
 	if _pheromone_locked:
 		_zero_all_fields()
 	_firewalls = get_tree().get_nodes_in_group("firewalls")
@@ -1238,6 +1255,73 @@ func saturation_penalty(v: float) -> float:
 		return 1.0
 	var excess: float = (v - opt) / (params_sat_cap - opt + 0.000001)
 	return maxf(params_sat_pen, 1.0 - excess * (1.0 - params_sat_pen))
+
+
+## Shared navigation flow field for procedural enemies. Returns a unit direction
+## from `from_world` that follows the BFS gradient down toward `target_world`,
+## routing around walls and through doorways, or Vector2.ZERO when there is no
+## flow (sandbox, unreachable cell, or already at the target).
+func path_dir(from_world: Vector2, target_world: Vector2) -> Vector2:
+	if not procedural or cols <= 0 or rows <= 0 or field_manager == null:
+		return Vector2.ZERO
+	var tcell := world_to_cell(target_world).clamp(Vector2i.ZERO, Vector2i(cols - 1, rows - 1))
+	if _nav_flow.size() != cols * rows or tcell != _nav_target or _nav_timer <= 0.0:
+		_rebuild_nav_flow(tcell)
+	var fcell := world_to_cell(from_world).clamp(Vector2i.ZERO, Vector2i(cols - 1, rows - 1))
+	var fi := fcell.y * cols + fcell.x
+	if _nav_flow[fi] < 0:
+		return Vector2.ZERO
+	var best_d: int = _nav_flow[fi]
+	var best: Vector2i = fcell
+	for dir in NAV_DIRS:
+		var nx: int = fcell.x + dir.x
+		var ny: int = fcell.y + dir.y
+		if nx < 0 or nx >= cols or ny < 0 or ny >= rows:
+			continue
+		var ni: int = ny * cols + nx
+		if _nav_flow[ni] < 0 or _nav_flow[ni] >= best_d:
+			continue
+		best_d = _nav_flow[ni]
+		best = Vector2i(nx, ny)
+	if best == fcell:
+		return Vector2.ZERO
+	var to := cell_to_world(best) - from_world
+	if to.length_squared() < 0.0001:
+		return Vector2.ZERO
+	return to.normalized()
+
+
+## Rebuilds the shared BFS field toward `start`. A few thousand cells is cheap,
+## and the refresh timer is reset here so only one rebuild happens per window.
+func _rebuild_nav_flow(start: Vector2i) -> void:
+	var n := cols * rows
+	if _nav_flow.size() != n:
+		_nav_flow.resize(n)
+	_nav_flow.fill(-1)
+	_nav_target = start
+	_nav_timer = NAV_REFRESH
+	if blocked(start.x, start.y):
+		return
+	var si := start.y * cols + start.x
+	_nav_flow[si] = 0
+	var queue := PackedInt32Array([si])
+	var head: int = 0
+	while head < queue.size():
+		var i: int = queue[head]
+		head += 1
+		var cx: int = i % cols
+		var cy: int = i / cols
+		var nd: int = _nav_flow[i] + 1
+		for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: int = cx + dir.x
+			var ny: int = cy + dir.y
+			if nx < 0 or nx >= cols or ny < 0 or ny >= rows:
+				continue
+			var ni: int = ny * cols + nx
+			if _nav_flow[ni] != -1 or field_manager.solid[ni] == 1:
+				continue
+			_nav_flow[ni] = nd
+			queue.append(ni)
 
 
 func get_field(field_name: String) -> ScalarField:

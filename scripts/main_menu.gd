@@ -370,8 +370,9 @@ func _make_preview_texture(level) -> ImageTexture:
 		for x in range(level.cols):
 			if level.solid[y * level.cols + x] == 0:
 				img.set_pixel(x, y, floor_col)
-	for f in level.food:
-		_paint(img, f["cell"], 3, Color(0.95, 0.72, 0.25))
+	if FoodSource.ENABLED:
+		for f in level.food:
+			_paint(img, f["cell"], 3, Color(0.95, 0.72, 0.25))
 	_paint(img, level.spawn_cell, 3, Color(0.35, 1.0, 0.55))
 	for e in level.enemies:
 		_paint(img, e["cell"], 3, _enemy_color(int(e["type"])))

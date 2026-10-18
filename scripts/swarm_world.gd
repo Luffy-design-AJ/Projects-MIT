@@ -255,11 +255,12 @@ func _generate_level(cfg: GameConfig) -> void:
 	for f in get_tree().get_nodes_in_group("food_sources"):
 		f.remove_from_group("food_sources")
 		f.queue_free()
-	for entry in level.food:
-		var food := FoodSource.new()
-		food.position = cell_to_world(entry["cell"])
-		food.amount = int(entry["amount"])
-		add_child(food)
+	if FoodSource.ENABLED:
+		for entry in level.food:
+			var food := FoodSource.new()
+			food.position = cell_to_world(entry["cell"])
+			food.amount = int(entry["amount"])
+			add_child(food)
 	nest_cell = level.spawn_cell
 
 

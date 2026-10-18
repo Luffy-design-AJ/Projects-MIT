@@ -54,12 +54,16 @@ const DEFAULTS := {
 	"enemy_ring_min": 0.32,
 	"enemy_ring_max": 0.72,
 	"enemy_min_sep": 6,
-	## Threat budget. The arena fields at least this many enemies (scaled by its
-	## world area and how open it is), so a bigger / airier arena is not easier.
-	## The player's hand-picked combo is always a floor. Set threat_scaling=false
-	## to place exactly the picked combo again.
+	## Threat budget. The player's hand-picked combo is always a floor. Two rules:
+	##   "flat"     - the arena fields a fixed budget (scaled by world area and
+	##                how open it is), independent of the pick count.
+	##   "per_pick" - the budget scales with how many enemies were picked, so a
+	##                small pick stays small.
+	## Set threat_scaling=false to place exactly the picked combo again.
 	"threat_scaling": true,
+	"enemy_scaling": "flat",
 	"enemy_budget_base": 6,
+	"enemy_budget_per_pick": 0.6,
 	"enemy_budget_ref_area": 1280.0 * 800.0,
 	"enemy_budget_ref_open": 0.60,
 	## Score band (in cells) within which a post is preferred if it has no line
@@ -142,11 +146,18 @@ static func _fnv(s: String) -> int:
 
 
 ## Stable string of every param, so any override changes the RNG stream.
+## Threat-only knobs that must not reshape the terrain, so Procedural 2 and
+## Procedural 3 generate the same arena for a given seed and combo.
+const _NON_TERRAIN_KEYS := ["enemy_scaling", "enemy_budget_per_pick"]
+
+
 static func _param_key(p: Dictionary) -> String:
 	var keys: Array = p.keys()
 	keys.sort()
 	var s := ""
 	for k in keys:
+		if str(k) in _NON_TERRAIN_KEYS:
+			continue
 		s += "%s=%s;" % [str(k), str(p[k])]
 	return s
 
@@ -834,7 +845,14 @@ static func _enemy_target_count(p: Dictionary, cols: int, rows: int, openness: f
 	var world_area: float = float(cols) * cell_px * float(rows) * cell_px
 	var area_factor: float = world_area / float(p["enemy_budget_ref_area"])
 	var open_factor: float = openness / maxf(0.01, float(p["enemy_budget_ref_open"]))
-	var budget: int = int(round(float(p["enemy_budget_base"]) * area_factor * open_factor))
+	var budget: int
+	if String(p.get("enemy_scaling", "flat")) == "per_pick":
+		# Procedural 3: arena pressure is proportional to the picked combo, so a
+		# single pick fields only a couple of enemies instead of a flat crowd.
+		var bonus: float = float(p.get("enemy_budget_per_pick", 0.6))
+		budget = int(round(float(base) * (1.0 + bonus * area_factor * open_factor)))
+	else:
+		budget = int(round(float(p["enemy_budget_base"]) * area_factor * open_factor))
 	return maxi(base, budget)
 
 

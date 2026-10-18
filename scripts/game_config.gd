@@ -7,8 +7,10 @@ enum Choice { NONE, ASSASSIN, PREDATOR, FIREWALL, BROODMOTHER, SIREN }
 
 ## Sandbox = the original hand-authored arena with a single enemy choice.
 ## Procedural 1 = the original BSP/maze generator.
-## Procedural 2 = the newer open, combo-driven arena.
-enum Mode { SANDBOX, PROCEDURAL_1, PROCEDURAL_2 }
+## Procedural 2 = the newer open, combo-driven arena (flat threat budget).
+## Procedural 3 = the same open arena, but enemy pressure scales with how many
+##                enemies the player picked instead of a flat budget.
+enum Mode { SANDBOX, PROCEDURAL_1, PROCEDURAL_2, PROCEDURAL_3 }
 
 ## --- Sandbox ---
 var choice: Choice = Choice.NONE

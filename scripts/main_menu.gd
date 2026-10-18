@@ -1,15 +1,18 @@
 extends Control
 
-## Main menu. Two modes:
+## Main menu. Modes:
 ##   Sandbox    - the original hand-authored arena + one enemy choice.
 ##   Procedural - multi-select enemy combo + seed + cell scale, with a live
 ##                minimap preview generated *before* the match starts. The
 ##                preview and the match call the same deterministic generator,
-##                so what you see is what you play.
+##                so what you see is what you play. Procedural 1 = maze,
+##                Procedural 2 = open arena (flat budget), Procedural 3 = the
+##                same open arena with pick-scaled enemy pressure.
 
 const MODE_SANDBOX := 0
 const MODE_PROC_1 := 1
 const MODE_PROC_2 := 2
+const MODE_PROC_3 := 3
 
 const CELL_SIZES := [10.0, 16.0, 20.0]
 const CELL_LABELS := ["10 px (fine)", "16 px", "20 px (coarse)"]
@@ -95,6 +98,7 @@ func _build_form() -> VBoxContainer:
 	_mode_button.add_item("Sandbox", MODE_SANDBOX)
 	_mode_button.add_item("Procedural 1 (maze)", MODE_PROC_1)
 	_mode_button.add_item("Procedural 2 (open)", MODE_PROC_2)
+	_mode_button.add_item("Procedural 3 (open, pick-scaled)", MODE_PROC_3)
 	_mode_button.item_selected.connect(_on_mode_selected)
 	mode_row.add_child(_mode_button)
 
@@ -159,7 +163,7 @@ func _build_form() -> VBoxContainer:
 		grid.add_child(plus)
 
 	var cap := Label.new()
-	cap.text = "Pick max %d per enemy, %d total. Bigger / more open arenas field extra." % [MAX_PER_TYPE, MAX_TOTAL]
+	cap.text = "Pick max %d per enemy, %d total. Procedural 2/3 add extra pressure." % [MAX_PER_TYPE, MAX_TOTAL]
 	cap.add_theme_color_override("font_color", Color(0.65, 0.68, 0.74))
 	_proc_box.add_child(cap)
 
@@ -352,7 +356,10 @@ func _arena() -> Vector2:
 func _generate(cols: int, rows: int, seed_value: int, combo: Array, cell: float = 10.0):
 	if _mode == MODE_PROC_1:
 		return LevelGenerator1.generate(cols, rows, seed_value, combo, {})
-	return LevelGenerator2.generate(cols, rows, seed_value, combo, {"cell_size": cell})
+	var params: Dictionary = {"cell_size": cell}
+	if _mode == MODE_PROC_3:
+		params["enemy_scaling"] = "per_pick"
+	return LevelGenerator2.generate(cols, rows, seed_value, combo, params)
 
 
 func _make_preview_texture(level) -> ImageTexture:
@@ -385,7 +392,13 @@ func _on_start_pressed() -> void:
 	if cfg == null:
 		return
 	if _mode != MODE_SANDBOX:
-		cfg.mode = cfg.Mode.PROCEDURAL_1 if _mode == MODE_PROC_1 else cfg.Mode.PROCEDURAL_2
+		match _mode:
+			MODE_PROC_1:
+				cfg.mode = cfg.Mode.PROCEDURAL_1
+			MODE_PROC_3:
+				cfg.mode = cfg.Mode.PROCEDURAL_3
+			_:
+				cfg.mode = cfg.Mode.PROCEDURAL_2
 		cfg.enemies = _selected_types()
 		cfg.level_seed = LevelGenerator2.parse_seed(_seed_edit.text)
 		cfg.cell_size = CELL_SIZES[_cell_button.selected]

@@ -245,6 +245,10 @@ func _generate_level(cfg: GameConfig) -> void:
 		level = LevelGenerator1.generate(cols, rows, level_seed, combo, params)
 	else:
 		generator_version = 2
+		# Procedural 3 shares Procedural 2's arena but scales enemy pressure with
+		# the picked combo; Procedural 2 keeps its flat budget.
+		if cfg.mode == cfg.Mode.PROCEDURAL_3:
+			params["enemy_scaling"] = "per_pick"
 		level = LevelGenerator2.generate(cols, rows, level_seed, combo, params)
 	field_manager.solid = level.solid
 	_build_wall_rects()

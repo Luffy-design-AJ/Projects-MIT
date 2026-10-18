@@ -196,6 +196,14 @@ var _firewalls: Array = []
 ## this instead of calling get_nodes_in_group() themselves, which used to cost
 ## one full tree scan per Broodmother/Siren/Predator per frame.
 var _cached_agents: Array = []
+## Cached "enemies" group, refreshed with the agent cache. Assists, the
+## Predator's lure link and flank-slot assignment iterate this instead of
+## scanning the tree per event.
+var _cached_enemies: Array = []
+## Round-robin approach lanes handed out to enemies on wake, so a group closes
+## from several angles instead of conga-lining down one corridor.
+const FLANK_SLOTS: int = 6
+var _flank_seq: int = 0
 
 const VIS_REFRESH_INTERVAL: float = 0.1
 ## Adaptive update rate for very large grids. When the grid is > ~1.5M cells,
@@ -246,6 +254,7 @@ func _ready() -> void:
 	# Prime the agent cache so enemies that tick before the world's first
 	# physics frame still see the colony.
 	_cached_agents = get_tree().get_nodes_in_group("swarm_agents")
+	_cached_enemies = get_tree().get_nodes_in_group("enemies")
 
 
 ## Builds the procedural level, installs its walls into the shared solid grid
@@ -689,6 +698,7 @@ func _physics_process(delta: float) -> void:
 		ant_manager.step(_step_dt)
 	# One group scan per tick for every enemy to share.
 	_cached_agents = get_tree().get_nodes_in_group("swarm_agents")
+	_cached_enemies = get_tree().get_nodes_in_group("enemies")
 
 	if not _active_cast.is_empty():
 		var timer: float = _active_cast["timer"] - delta
@@ -738,6 +748,19 @@ func _physics_process(delta: float) -> void:
 ## threshold, Predator cluster search). Refreshed once per physics tick.
 func get_swarm_agents() -> Array:
 	return _cached_agents
+
+
+## Shared view of every Enemy (staggered assists, Predator's lure link,
+## pin-gate checks). Refreshed once per physics tick.
+func get_enemies() -> Array:
+	return _cached_enemies
+
+
+## Next flank slot for an enemy that just woke (round-robin over FLANK_SLOTS).
+func next_flank_slot() -> int:
+	var slot := _flank_seq % FLANK_SLOTS
+	_flank_seq += 1
+	return slot
 
 
 ## Player emit: stamps the shared hunt field at the emitter's cell.

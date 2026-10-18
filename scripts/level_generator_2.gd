@@ -644,10 +644,45 @@ static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32
 	var doors := _door_cells(lvl, dist_wall, reach_dist, lvl.spawn_cell)
 
 	var n := plan.size()
-	for k in range(n):
-		var type: int = plan[k]
-		var role := _placement_role(type)
-		var desired: Vector2i
+	# Combo pairing: when the pick contains both, land the Siren(s) first so a
+	# Predator can be posted right on her landmark — clump-and-pounce from one
+	# spot instead of two independent posts across the arena.
+	var pair_pred_with_siren: bool = plan.has(Enemy.Type.SIREN) and plan.has(Enemy.Type.PREDATOR)
+	var siren_cells: Array = []
+
+	var k := 0
+	if pair_pred_with_siren:
+		for t in plan:
+			if t == Enemy.Type.SIREN:
+				var cell := _place_enemy_post(lvl, reach_dist, dist_wall, rng, p, placed, food_cells, doors, t, k, n, base_angle, ring_scale, Vector2i(-1, -1))
+				if cell.x >= 0:
+					siren_cells.append(cell)
+			k += 1
+	k = 0
+	for t in plan:
+		var override := Vector2i(-1, -1)
+		if t == Enemy.Type.PREDATOR and not siren_cells.is_empty():
+			# An offset ring of posts around the paired Siren (10-18 cells out),
+			# relaxed through the usual clearance/sep search on placement.
+			var home: Vector2i = siren_cells[k % siren_cells.size()]
+			var pang := rng.randf() * TAU
+			var prad := rng.randf_range(10.0, 18.0)
+			override = Vector2i(
+				int(round(float(home.x) + cos(pang) * prad)),
+				int(round(float(home.y) + sin(pang) * prad))
+			)
+		if not (pair_pred_with_siren and t == Enemy.Type.SIREN):
+			_place_enemy_post(lvl, reach_dist, dist_wall, rng, p, placed, food_cells, doors, t, k, n, base_angle, ring_scale, override)
+		k += 1
+
+
+## Places plan slot `k` of `n`: picks the post for `type` (door, ring slot, or
+## an explicit `override` target), prefers cover, and appends it to the level.
+## Returns the placed cell, or (-1, -1).
+static func _place_enemy_post(lvl: Level, reach_dist: PackedInt32Array, dist_wall: PackedInt32Array, rng: RandomNumberGenerator, p: Dictionary, placed: Array, food_cells: Array, doors: Array, type: int, k: int, n: int, base_angle: float, ring_scale: float, override: Vector2i) -> Vector2i:
+	var role := _placement_role(type)
+	var desired := override
+	if desired.x < 0:
 		if role == "door" and not doors.is_empty():
 			desired = _pick_door(lvl, doors, placed, lvl.spawn_cell)
 		else:
@@ -662,13 +697,14 @@ static func _place_enemies(lvl: Level, reach: Dictionary, dist_wall: PackedInt32
 				int(round(float(lvl.spawn_cell.x) + cos(ang) * rfrac * ring_scale)),
 				int(round(float(lvl.spawn_cell.y) + sin(ang) * rfrac * ring_scale))
 			)
-		# Control and landmark posts hide behind cover; a Predator charges in the
-		# open, so it does not ask for a hidden post.
-		var prefer_hidden: bool = role != "close"
-		var cell := _find_enemy_cell(lvl, desired, reach_dist, dist_wall, placed, type, rng, p, food_cells, prefer_hidden)
-		if cell.x >= 0:
-			placed.append(cell)
-			lvl.enemies.append({"type": type, "cell": cell})
+	# Control and landmark posts hide behind cover; a Predator charges in the
+	# open, so it does not ask for a hidden post.
+	var prefer_hidden: bool = role != "close"
+	var cell := _find_enemy_cell(lvl, desired, reach_dist, dist_wall, placed, type, rng, p, food_cells, prefer_hidden)
+	if cell.x >= 0:
+		placed.append(cell)
+		lvl.enemies.append({"type": type, "cell": cell})
+	return cell
 
 
 ## Which tactical role a type plays in placement.

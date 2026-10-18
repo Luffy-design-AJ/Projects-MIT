@@ -38,6 +38,11 @@ enum SirenState { LURE, WINDUP, SNAP, RECOVER }
 @export var backoff_time: float = 0.4
 @export var backoff_speed: float = 160.0
 @export var recover_time: float = 0.8
+## Combo pacing: with a Firewall in the level, the Assassin holds its strike
+## until the Firewall is within strike_range * 1.5 of the player (the pin) —
+## then gives up waiting after this many seconds, so it can never softlock.
+@export var pin_fallback_time: float = 4.0
+var _stalk_in_range: float = 0.0
 
 @export_group("Predator")
 @export var pred_search_radius: float = 151.0
@@ -51,6 +56,13 @@ enum SirenState { LURE, WINDUP, SNAP, RECOVER }
 ## running every tick between scans, so only the (expensive) scan is throttled.
 @export var pred_search_interval: float = 0.15
 var _pred_search_timer: float = 0.0
+## How long (s) a Predator waits after waking before it starts hunting (was a
+## flat 15s — long enough to sit out the entire opening of a fight).
+@export var pred_grace_time: float = 3.0
+## Combo link: when an awake Siren is laying a lure within this radius, her
+## clump counts as a cluster and the Predator charges the bait spot — the
+## clump-and-pounce pair fires on its own.
+@export var pred_lure_link_radius: float = 400.0
 ## Fear flare (WINDUP + STRIKE only): radius in cells and the absolute hunt
 ## value stamped at the centre each frame while flaring. Negative scatters
 ## ants; positive would draw them in. Set to 0 to disable the flare entirely
@@ -110,6 +122,13 @@ var firewall_vel: Vector2 = Vector2.ZERO
 ## How often (seconds) the delivery-skim scan runs. Throttled from every
 ## physics tick; radius, heal and counters are unchanged.
 @export var broodmother_steal_interval: float = 0.12
+## Alternate pay-off while food is disabled (FoodSource.ENABLED == false): no
+## deliveries exist to skim, so she siphons from ants gathered around the
+## beacon instead — up to broodmother_siphon_max_ants every steal interval,
+## healing broodmother_siphon_heal each (~20 HP/s at 6 ants / 0.12s). Still
+## never kills ants; flipping food back on restores the delivery-skim path.
+@export var broodmother_siphon_heal: float = 0.4
+@export var broodmother_siphon_max_ants: int = 6
 var brood_stolen: int = 0
 var _brood_steal_timer: float = 0.0
 
@@ -145,6 +164,22 @@ var _siren_count_timer: float = 0.0
 @export var awake_radius: float = 260.0
 ## How far an un-woken enemy may drift from its post before it walks back.
 @export var post_leash: float = 48.0
+
+@export_group("Coordination (procedural)")
+## When this enemy wakes (player close, or damaged), dormant allies within this
+## radius receive a staggered assist: they hold post a moment longer, then join
+## the fight. Group engagements instead of a conveyor belt of 1v1 duels.
+@export var assist_link_radius: float = 300.0
+@export var assist_delay_min: float = 0.5
+@export var assist_delay_max: float = 1.5
+## While approaching from further than this (px), a flanking ally heads for its
+## personal slot on the ring around the player instead of walking the shared
+## flow gradient straight in; inside it, it closes in normally.
+@export var flank_radius: float = 250.0
+
+var assist_pending: bool = false
+var assist_timer: float = 0.0
+var flank_slot: int = -1
 
 var awake: bool = false
 var post_pos: Vector2 = Vector2.ZERO
@@ -183,6 +218,7 @@ func _tick_redraw(delta: float) -> void:
 
 func _ready() -> void:
 	super._ready()
+	add_to_group("enemies")
 	hp = max_hp
 	_update_label()
 	if type == Type.PLACEHOLDER:
@@ -233,16 +269,25 @@ func _physics_process(delta: float) -> void:
 		_post_assigned = true
 	var world := _get_world()
 	if world != null and world.procedural and not awake:
-		var player := _nearest_player()
-		if player != null and global_position.distance_to(player.global_position) <= awake_radius:
-			awake = true
-			_force_redraw()
-		else:
-			# Ambush: stay put (behind cover) until the player gets close enough
-			# or attacks. No field is stamped while dormant.
-			_hold_post(world, delta)
-			_maybe_redraw()
-			return
+		if assist_pending:
+			assist_timer -= delta
+			if assist_timer <= 0.0:
+				assist_pending = false
+				awake = true
+				_force_redraw()
+		if not awake:
+			var player := _nearest_player()
+			if player != null and global_position.distance_to(player.global_position) <= awake_radius:
+				awake = true
+				_force_redraw()
+				_call_for_help(world)
+			else:
+				# Ambush: stay put (behind cover) until the player gets close
+				# enough, an ally calls for help, or it is attacked. No field is
+				# stamped while dormant.
+				_hold_post(world, delta)
+				_maybe_redraw()
+				return
 	match type:
 		Type.ASSASSIN:
 			_behave_assassin(delta)
@@ -265,11 +310,14 @@ func _hold_post(world: SwarmWorld, delta: float) -> void:
 
 
 ## One approach step toward the player: straight in sandbox, routed around walls
-## and through doorways via the world's flow field in procedural levels.
+## and through doorways via the world's flow field in procedural levels. While
+## still far out, an ally also commits to its personal flank lane so a group
+## closes from several angles instead of queueing behind the same gradient.
 func _chase_step(speed: float, delta: float, world: SwarmWorld, player: Node2D) -> void:
 	if player == null:
 		return
-	var dir := player.global_position - global_position
+	var to_player := player.global_position - global_position
+	var dir := to_player
 	if dir.length_squared() > 0.0001:
 		dir = dir.normalized()
 	else:
@@ -278,13 +326,33 @@ func _chase_step(speed: float, delta: float, world: SwarmWorld, player: Node2D) 
 		var nav: Vector2 = world.path_dir(global_position, player.global_position)
 		if nav != Vector2.ZERO:
 			dir = nav
+		# The shared flow field keeps exactly one target (the player) so rebuilds
+		# never thrash. The flank is a local override on top: head for a slot on
+		# the ring around the player until you're inside engagement distance,
+		# and only if that slot isn't buried in a wall (otherwise keep the nav
+		# direction). The 5% hysteresis stops the lane/goal flip-flop right at
+		# the ring's edge.
+		if to_player.length() <= flank_radius and dir != Vector2.ZERO:
+			var ring := 70.0 * world.cell_size / 10.0
+			if to_player.length() > ring * 1.05:
+				if flank_slot < 0:
+					flank_slot = world.next_flank_slot()
+				var ang := TAU * float(flank_slot) / float(SwarmWorld.FLANK_SLOTS)
+				var spot: Vector2 = player.global_position + Vector2(cos(ang), sin(ang)) * ring
+				if not _pos_blocked(world, spot):
+					var fl := spot - global_position
+					if fl.length_squared() > 1.0:
+						dir = fl.normalized()
 	if dir != Vector2.ZERO:
 		_move_clamped(dir * speed * delta, world)
 
 
 func take_damage(amount: float) -> void:
+	var was_awake := awake
 	awake = true
 	_force_redraw()
+	if not was_awake:
+		_call_for_help(_get_world())
 	hp = maxf(hp - amount, 0.0)
 	_update_label()
 	if hp <= 0.0 and not dead:
@@ -310,9 +378,11 @@ func _behave_assassin(delta: float) -> void:
 			var to_player: Vector2 = player.global_position - global_position
 			if to_player.length() <= strike_range:
 				aim_dir = to_player.normalized()
-				struck_this_strike = false
-				_enter_state(DuelState.WINDUP, windup_time)
+				if _pin_gate_open(world, player, delta):
+					struck_this_strike = false
+					_enter_state(DuelState.WINDUP, windup_time)
 			else:
+				_stalk_in_range = 0.0
 				_chase_step(move_speed, delta, world, player)
 		DuelState.WINDUP:
 			if aura_strength != 0.0:
@@ -408,6 +478,76 @@ func _get_world() -> SwarmWorld:
 	return parent.get_node_or_null("SwarmWorld") as SwarmWorld
 
 
+## Staggered assist: on the wake transition, dormant allies nearby receive a
+## delayed join request instead of an instant dogpile — each ally holds its post
+## a little longer, then enters the fight. Procedural only; sandbox untouched.
+func _call_for_help(world: SwarmWorld) -> void:
+	if world == null or not world.procedural:
+		return
+	for e in world.get_enemies():
+		if e == self or not is_instance_valid(e) or not (e is Enemy):
+			continue
+		var ally := e as Enemy
+		if ally.awake or ally.assist_pending:
+			continue
+		if global_position.distance_to(ally.global_position) <= assist_link_radius:
+			ally.assist_pending = true
+			ally.assist_timer = randf_range(assist_delay_min, assist_delay_max)
+
+
+## Assassin pin gate: with a Firewall in the combo, strikes start only once the
+## Firewall is close enough to actually pin the player (or the fallback timer
+## expires — no softlock). No Firewall in the level, or sandbox: always open.
+func _pin_gate_open(world: SwarmWorld, player: Node2D, delta: float) -> bool:
+	if not world.procedural or not _combo_has_firewall(world):
+		return true
+	if _firewall_pinning(world, player.global_position):
+		_stalk_in_range = 0.0
+		return true
+	_stalk_in_range += delta
+	return _stalk_in_range >= pin_fallback_time
+
+
+func _combo_has_firewall(world: SwarmWorld) -> bool:
+	for t in world.combo:
+		if int(t) == Type.FIREWALL:
+			return true
+	return false
+
+
+func _firewall_pinning(world: SwarmWorld, at: Vector2) -> bool:
+	var reach := strike_range * 1.5
+	for e in world.get_enemies():
+		if not is_instance_valid(e) or not (e is Enemy):
+			continue
+		var f := e as Enemy
+		if f.type != Type.FIREWALL or not f.awake:
+			continue
+		if f.global_position.distance_to(at) <= reach:
+			return true
+	return false
+
+
+## Nearest awake Siren actively laying a lure within pred_lure_link_radius — the
+## Predator's half of the clump-and-pounce combo. Returns a position or null.
+func _siren_lure_point(world: SwarmWorld) -> Variant:
+	var best: Variant = null
+	var best_d := pred_lure_link_radius
+	for e in world.get_enemies():
+		if not is_instance_valid(e) or e == self or not (e is Enemy):
+			continue
+		var s := e as Enemy
+		if s.type != Type.SIREN or not s.awake:
+			continue
+		if s.siren_state != SirenState.LURE and s.siren_state != SirenState.WINDUP:
+			continue
+		var d := global_position.distance_to(s.global_position)
+		if d <= best_d:
+			best_d = d
+			best = s.global_position
+	return best
+
+
 func _on_counter_damage_timeout() -> void:
 	for area in get_overlapping_areas():
 		if area.is_in_group("swarm_agents") and area.has_method("take_damage"):
@@ -479,23 +619,39 @@ func _behave_broodmother(delta: float) -> void:
 		_chase_step(broodmother_speed, delta, world, player)
 	# Hijack beacon — the swarm's own loyalty does the pulling.
 	world.stamp_home_field(global_position, broodmother_field_radius_cells, broodmother_emit_per_sec * delta)
-	# Skim deliveries from carrying ants that reach the beacon. Throttled to
-	# broodmother_steal_interval; radius, heal and counters are unchanged.
+	# Get paid: skim deliveries from carrying ants that reach the beacon. With
+	# food disabled there are no deliveries, so she siphons from the ants
+	# gathered around the beacon instead. Throttled to the steal interval.
 	_brood_steal_timer -= delta
 	if _brood_steal_timer <= 0.0:
 		_brood_steal_timer = broodmother_steal_interval
 		var steal_px: float = broodmother_steal_radius_cells * world.cell_size
-		var stole := false
-		for agent in world.get_swarm_agents():
-			if not is_instance_valid(agent) or not agent.carry:
-				continue
-			if global_position.distance_to(agent.global_position) <= steal_px:
-				agent.carry = false
+		if FoodSource.ENABLED:
+			var stole := false
+			for agent in world.get_swarm_agents():
+				if not is_instance_valid(agent) or not agent.carry:
+					continue
+				if global_position.distance_to(agent.global_position) <= steal_px:
+					agent.carry = false
+					brood_stolen += 1
+					hp = minf(hp + broodmother_steal_heal, max_hp)
+					stole = true
+			if stole:
+				_update_label()
+		else:
+			var siphoned := 0
+			for agent in world.get_swarm_agents():
+				if not is_instance_valid(agent):
+					continue
+				if global_position.distance_to(agent.global_position) > steal_px:
+					continue
+				hp = minf(hp + broodmother_siphon_heal, max_hp)
 				brood_stolen += 1
-				hp = minf(hp + broodmother_steal_heal, max_hp)
-				stole = true
-		if stole:
-			_update_label()
+				siphoned += 1
+				if siphoned >= broodmother_siphon_max_ants:
+					break
+			if siphoned > 0:
+				_update_label()
 	_maybe_redraw()
 
 
@@ -559,7 +715,7 @@ func _behave_predator(delta: float) -> void:
 	pred_state_timer -= delta
 	pred_grace_elapsed += delta
 	_pred_search_timer -= delta
-	if pred_grace_elapsed < 15.0:
+	if pred_grace_elapsed < pred_grace_time:
 		return
 	match pred_state:
 		PredState.SEARCH:
@@ -575,6 +731,14 @@ func _behave_predator(delta: float) -> void:
 					if dist <= pred_search_radius:
 						sum += agent.global_position
 						count += 1
+				# Combo link: an awake Siren actively laying a lure nearby is the
+				# clump — charge the bait spot while she's pulling the swarm in.
+				if count < pred_cluster_threshold:
+					var lure = _siren_lure_point(world)
+					if lure != null:
+						# sum gets averaged by count below, so scale it to match.
+						sum = Vector2(lure) * float(pred_cluster_threshold)
+						count = pred_cluster_threshold
 				# Also check swarm density near player if player is in range
 				var player := _nearest_player()
 				if count < pred_cluster_threshold and player != null and global_position.distance_to(player.global_position) <= pred_search_radius * 1.2:

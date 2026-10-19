@@ -32,7 +32,9 @@ var nest_pheromone_enabled: bool = true
 ## ants wander on their base physics. SPRAY -> EMINATE -> BEACON -> HUNT -> BOMB
 ## is the scalar-field unlock ladder; each stage gates only its own abilities.
 enum Stage { CONTROL, CARNAGE, LOCKOUT, SPRAY, EMINATE, BEACON, HUNT, BOMB }
-var stage: int = Stage.SPRAY
+## Spawn into BOMB mode (the top of the ladder); F still cycles through every
+## stage in enum order from here.
+var stage: int = Stage.BOMB
 
 var hunt_unlocked := false       # cast (hunt pheromone) works
 var all_hunt_unlocked := false   # loop/multi/bounce patterns available

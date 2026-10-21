@@ -4,6 +4,10 @@
 
 *An experimental ant-swarm game about creating emergent behaviour through mathematical rules.* 
 
+## Controls
+
+See [CONTROLS.md](CONTROLS.md) for the controls of the current playable build.
+
 ## The Idea
 
 I've always been fascinated by game design and am constantly looking for interesting concepts to explore. This project emerged from a simple thought: throughout school, and often even in college, learning rarely feels exploratory or driven by discovery. We're taught scientific facts, but not always the love of science itself.
@@ -35,11 +39,6 @@ Pheromones are modelled as discrete scalar fields on a grid. Three primary phero
 Ants respond to these fields with different sensitivities, while the signals decay over time. Development toggles for parameters such as exploration rate, noise and decay make it possible to experiment with how the system behaves.
 
 The mechanics are still evolving. The interplay between field strengths doesn't always produce the behaviour I intend, but the colony is beginning to behave surprisingly organically—which is precisely what I hoped to achieve.
-
-
-## Controls
-
-See [CONTROLS.md](CONTROLS.md) for the controls of the current playable build.
 
 ## Screenshots and Clips
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/dcee9fbc-3f3b-4ec9-9020-84988983d722" />

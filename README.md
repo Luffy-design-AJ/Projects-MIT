@@ -2,7 +2,7 @@
 
 **[▶ Play Swarm on itch.io](https://luffy-aj.itch.io/swarm-prototype)**
 
-*An experimental ant-swarm game about creating emergent behaviour through mathematical rules.*
+*An experimental ant-swarm game about creating emergent behaviour through mathematical rules.* 
 
 ## The Idea
 

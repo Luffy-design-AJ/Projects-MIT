@@ -46,9 +46,11 @@ See [CONTROLS.md](CONTROLS.md) for the controls of the current playable build.
 (Initial realistic ant physics puzzle game with different pheromone fields)
 
 <img width="2880" height="1800" alt="Screen Recording 2026-10-21 at 4 05 44 PM" src="https://github.com/user-attachments/assets/2d132ab6-b83f-4827-af27-b9c5a1f516fc" />
+
 (Player attracting ants using pheromone)
 
 <img width="518" height="280" alt="image" src="https://github.com/user-attachments/assets/81d51a79-ec82-4e43-a695-54d6132b9666" />
+
 (Procedural Generation of Levels)
 
 

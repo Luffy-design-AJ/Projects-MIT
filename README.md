@@ -45,6 +45,13 @@ See [CONTROLS.md](CONTROLS.md) for the controls of the current playable build.
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/dcee9fbc-3f3b-4ec9-9020-84988983d722" />
 (Initial realistic ant physics puzzle game with different pheromone fields)
 
+<img width="2880" height="1800" alt="Screen Recording 2026-10-21 at 4 05 44 PM" src="https://github.com/user-attachments/assets/2d132ab6-b83f-4827-af27-b9c5a1f516fc" />
+(Player attracting ants using pheromone)
+
+<img width="518" height="280" alt="image" src="https://github.com/user-attachments/assets/81d51a79-ec82-4e43-a695-54d6132b9666" />
+(Procedural Generation of Levels)
+
+
 ## Development
 
 Built with Godot. The repository contains the current project source and selected earlier prototypes documenting its evolution.

@@ -12,6 +12,16 @@ If we were stranded in an unknown star system with no memory—yes, a *Project H
 
 I wanted to create something that captured this sense of discovery without becoming an explicitly educational game. Around the same time, Math Circle sessions had sparked my interest in random systems, and I was inspired by Richard Feynman's descriptions of his amateur ant experiments. Combining these ideas led me to Swarm.
 
+## Evolution of the Project
+
+Swarm began as a real-time puzzle game about sculpting emergent behaviour through chemical fields. I later explored a combat-roguelite direction inspired by games like *Hades*, while preserving the original principle: the player influences an ecosystem rather than commanding it.
+
+In this direction, the player is deliberately weak and cannot deal much damage directly. Instead, abilities manipulate the swarm through different pheromone signals—for example, guiding ants towards enemies, dispersing them to reposition, or concealing them temporarily.
+
+The ants continue to obey their underlying simulation. The player can influence their behaviour, but cannot dictate every action.
+
+**Note:** The playable build linked above represents the current implementation. The later combat concept is a design direction, not a claim that every described ability is already implemented.
+
 ## How It Works
 
 The central idea is that the player doesn't control individual ants directly. Instead, they manipulate the environment, influencing the conditions under which the colony operates. The challenge is to create conditions in which the desired behaviour emerges naturally from the interactions of many simple agents.
@@ -26,15 +36,6 @@ Ants respond to these fields with different sensitivities, while the signals dec
 
 The mechanics are still evolving. The interplay between field strengths doesn't always produce the behaviour I intend, but the colony is beginning to behave surprisingly organically—which is precisely what I hoped to achieve.
 
-## Evolution of the Project
-
-Swarm began as a real-time puzzle game about sculpting emergent behaviour through chemical fields. I later explored a combat-roguelite direction inspired by games like *Hades*, while preserving the original principle: the player influences an ecosystem rather than commanding it.
-
-In this direction, the player is deliberately weak and cannot deal damage directly. Instead, abilities manipulate the swarm through different pheromone signals—for example, guiding ants towards enemies, dispersing them to reposition, or concealing them temporarily.
-
-The ants continue to obey their underlying simulation. The player can influence their behaviour, but cannot dictate every action.
-
-**Note:** The playable build linked above represents the current implementation. The later combat concept is a design direction, not a claim that every described ability is already implemented.
 
 ## Controls
 

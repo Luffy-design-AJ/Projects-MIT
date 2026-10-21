@@ -41,6 +41,10 @@ The mechanics are still evolving. The interplay between field strengths doesn't 
 
 See [CONTROLS.md](CONTROLS.md) for the controls of the current playable build.
 
+## Screenshots and Clips
+<img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/dcee9fbc-3f3b-4ec9-9020-84988983d722" />
+(Initial realistic ant physics puzzle game with different pheromone fields)
+
 ## Development
 
 Built with Godot. The repository contains the current project source and selected earlier prototypes documenting its evolution.

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Trail Router</title>
+    <link rel="preconnect" href="https://tile.openstreetmap.org">
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIINfQPDGxX5tqZw6nVFhMUt2ZV9hAETC5A="
+      crossorigin=""
+    >
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <noscript>Sorry, this site requires JavaScript to function. It's an interactive map, what did you expect?</noscript>
+
+    <main class="trail-app" aria-label="Trail Router map">
+      <div id="map"></div>
+
+      <aside class="route-shell" aria-label="Trail Router controls">
+        <div class="app-bar">
+          <button class="icon-button menu-button" type="button" aria-label="Menu">☰</button>
+          <h1>Trail Router</h1>
+          <button class="icon-button collapse-button" type="button" aria-label="Collapse panel">‹</button>
+        </div>
+
+        <div class="content-row">
+          <nav class="side-tools" aria-label="Panels">
+            <button class="tool-button active" type="button" data-panel="route" aria-label="Route">⌂</button>
+            <button class="tool-button" type="button" data-panel="settings" aria-label="Settings">⚙</button>
+            <button class="tool-button" type="button" data-panel="share" aria-label="Share">↗</button>
+            <button class="tool-button" type="button" data-panel="help" aria-label="Help">?</button>
+          </nav>
+
+          <section class="panel active" id="routePanel" aria-label="Route planner">
+            <div class="mode-row" role="radiogroup" aria-label="Route type">
+              <label>
+                <input type="radio" name="routeMode" value="loop" checked>
+                <span>Round trip</span>
+              </label>
+              <label>
+                <input type="radio" name="routeMode" value="destination">
+                <span>Point to Point</span>
+              </label>
+              <button class="trash-button" id="clearRoute" type="button" aria-label="Clear route">⌫</button>
+            </div>
+
+            <div class="address-stack">
+              <label class="address-field">
+                <span>Start</span>
+                <input id="startInput" value="37.7749, -122.4194">
+                <button type="button" data-copy-start aria-label="Use current map center">×</button>
+              </label>
+              <label class="address-field" id="destinationField">
+                <span>Finish</span>
+                <input id="destinationInput" value="37.7694, -122.4862">
+                <button type="button" data-copy-destination aria-label="Use current map center">×</button>
+              </label>
+            </div>
+
+            <div class="route-select-row">
+              <select id="distanceSelect" aria-label="Route distance">
+                <option value="5">5 km route</option>
+                <option value="8" selected>8 km route</option>
+                <option value="10">10 km route</option>
+                <option value="15">15 km route</option>
+                <option value="20">20 km route</option>
+                <option value="30">30 km route</option>
+              </select>
+              <button id="routeButton" type="button" aria-label="Build route">+</button>
+            </div>
+
+            <div class="status-line" id="routeStatus">Ready</div>
+          </section>
+
+          <section class="panel" id="settingsPanel" aria-label="Settings">
+            <div class="settings-note">
+              <p>Changing the settings below will calculate a new set of routes. To edit the current route instead, click below.</p>
+              <button id="editCurrentRoute" type="button">Edit current route</button>
+            </div>
+
+            <label class="range-line">
+              <span>Prefer green areas:</span>
+              <input id="natureSlider" type="range" min="0" max="100" value="70">
+              <output id="natureValue">70%</output>
+            </label>
+            <label class="range-line">
+              <span>Hills preference:</span>
+              <input id="elevationSlider" type="range" min="0" max="100" value="45">
+              <output id="elevationValue">45%</output>
+            </label>
+            <label class="range-line">
+              <span>Avoid busy roads:</span>
+              <input id="trafficSlider" type="range" min="0" max="100" value="35">
+              <output id="trafficValue">35%</output>
+            </label>
+
+            <div class="check-stack">
+              <label><input type="checkbox" id="avoidRepeat"> Avoid repetition</label>
+              <label><input type="checkbox" id="avoidUnsafe"> Avoid potentially unsafe roads</label>
+              <label><input type="checkbox" id="avoidUnlit"> Avoid unlit streets</label>
+            </div>
+
+            <label class="select-line">
+              <span>Map layers:</span>
+              <select id="mapLayerSelect">
+                <option>Trail Router default map</option>
+                <option>Light map</option>
+                <option>Satellite map</option>
+              </select>
+            </label>
+
+            <div class="check-stack">
+              <label><input type="checkbox" id="mileUnits"> Use miles instead of km</label>
+              <label><input type="checkbox" id="drawStraight"> Draw straight lines</label>
+              <label><input type="checkbox" id="runMode"> Run mode (lock route, follow GPS)</label>
+            </div>
+          </section>
+
+          <section class="panel" id="sharePanel" aria-label="Share">
+            <h2>Share</h2>
+            <p>Copy a link to this route, or keep planning from the same start point.</p>
+            <input id="shareInput" readonly value="https://trailrouter.com/#/route/san-francisco">
+            <button id="copyShare" type="button">Copy link</button>
+          </section>
+
+          <section class="panel" id="helpPanel" aria-label="Help">
+            <h2>Trail Router helps you discover new running routes.</h2>
+            <p>Our routing algorithm prefers paths that go through parks, forests or by water, and avoids busy roads wherever possible.</p>
+            <ul>
+              <li>Automatically plot a round-trip route of a desired distance.</li>
+              <li>Manually create your own point-to-point route that prefers nature.</li>
+              <li>Choose whether you'd prefer routes that involve nature, well-lit streets or a lack of hills.</li>
+            </ul>
+          </section>
+        </div>
+      </aside>
+
+      <div class="map-action-stack" aria-label="Map controls">
+        <button type="button" id="locateButton" aria-label="Locate">⌖</button>
+        <button type="button" id="undoButton" aria-label="Undo">↶</button>
+        <button type="button" id="helpButton" aria-label="Help">?</button>
+      </div>
+
+      <div class="distance-dock" aria-live="polite">
+        <button id="previousRoute" type="button" aria-label="Previous route">‹</button>
+        <strong id="distanceMetric">-- km</strong>
+        <button id="nextRoute" type="button" aria-label="Next route">›</button>
+      </div>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
